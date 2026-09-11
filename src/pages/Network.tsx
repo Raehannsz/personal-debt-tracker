@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useDebts, usePayments, usePersons } from '../hooks/useData';
-import { getRemainingDebt } from '../services/debtLogic';
+import { getNetEdges } from '../services/debtLogic';
 import { formatCurrency } from '../utils/format';
 import { EmptyState } from '../components/ui';
 
@@ -9,15 +9,14 @@ export function Network() {
   const payments = usePayments();
   const persons = usePersons();
 
+  const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
+
   const edges = useMemo(() => {
-    return debts
-      .filter((d) => d.status !== 'CANCELLED' && d.status !== 'PAID')
-      .map((d) => ({
-        from: persons.find((p) => p.id === d.debtorId)?.name ?? '—',
-        to: persons.find((p) => p.id === d.creditorId)?.name ?? '—',
-        amount: getRemainingDebt(d, payments),
-      }))
-      .filter((e) => e.amount > 0);
+    return getNetEdges(debts, payments).map((e) => ({
+      from: personName(e.fromId),
+      to: personName(e.toId),
+      amount: e.amount,
+    }));
   }, [debts, payments, persons]);
 
   const nodeNames = useMemo(() => {
@@ -38,10 +37,11 @@ export function Network() {
     );
   }
 
-  // Layout nodes in a circle
-  const size = 320;
+  // Layout nodes in a circle — radius scales with node count so labels don't crowd.
+  const nodeR = 26;
+  const radius = Math.max(90, 55 + nodeNames.length * 26);
+  const size = radius * 2 + 140;
   const center = size / 2;
-  const radius = size / 2 - 50;
   const positions = new Map<string, { x: number; y: number }>();
   nodeNames.forEach((name, i) => {
     const angle = (2 * Math.PI * i) / nodeNames.length - Math.PI / 2;
@@ -51,16 +51,26 @@ export function Network() {
     });
   });
 
+  function initials(name: string): string {
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2
+      ? (parts[0][0] + parts[1][0]).toUpperCase()
+      : name.slice(0, 2).toUpperCase();
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <h2 className="text-lg font-semibold text-slate-800">Jaringan</h2>
-      <p className="text-sm text-slate-500">Arah panah menunjukkan: Debtor → Creditor (yang berhutang → yang memberi hutang)</p>
+      <p className="text-sm text-slate-500">
+        Arah panah: <span className="font-medium text-slate-700">yang berhutang → yang memberi hutang</span>. Nominal
+        sudah dihitung net (kalau dua orang saling berhutang, otomatis dikliringkan jadi satu angka).
+      </p>
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 overflow-x-auto">
-        <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-md mx-auto" style={{ minWidth: 280 }}>
+        <svg viewBox={`0 0 ${size} ${size}`} className="w-full mx-auto" style={{ minWidth: 320, maxWidth: 480 }}>
           <defs>
-            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-              <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-indigo-500, #6366f1)" />
+            <marker id="arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+              <path d="M0,0.5 L8,4.5 L0,8.5 Z" fill="#4f46e5" />
             </marker>
           </defs>
           {edges.map((e, i) => {
@@ -69,13 +79,18 @@ export function Network() {
             const dx = b.x - a.x;
             const dy = b.y - a.y;
             const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            const nodeR = 26;
-            const startX = a.x + (dx / len) * nodeR;
-            const startY = a.y + (dy / len) * nodeR;
-            const endX = b.x - (dx / len) * (nodeR + 6);
-            const endY = b.y - (dy / len) * (nodeR + 6);
-            const midX = (startX + endX) / 2;
-            const midY = (startY + endY) / 2;
+            const ux = dx / len;
+            const uy = dy / len;
+            const startX = a.x + ux * nodeR;
+            const startY = a.y + uy * nodeR;
+            const endX = b.x - ux * (nodeR + 9);
+            const endY = b.y - uy * (nodeR + 9);
+            const labelX = (startX + endX) / 2;
+            const labelY = (startY + endY) / 2;
+
+            const label = formatCurrency(e.amount);
+            const labelWidth = Math.max(46, label.length * 6.3 + 12);
+
             return (
               <g key={i}>
                 <line
@@ -83,14 +98,21 @@ export function Network() {
                   y1={startY}
                   x2={endX}
                   y2={endY}
-                  stroke="#6366f1"
+                  stroke="#818cf8"
                   strokeWidth={2}
                   markerEnd="url(#arrow)"
-                  opacity={0.6}
                 />
-                <rect x={midX - 28} y={midY - 9} width={56} height={18} rx={9} fill="white" stroke="#e2e8f0" />
-                <text x={midX} y={midY + 4} textAnchor="middle" fontSize="9" fill="#475569">
-                  {formatCurrency(e.amount).replace('Rp', '')}
+                <rect
+                  x={labelX - labelWidth / 2}
+                  y={labelY - 10}
+                  width={labelWidth}
+                  height={20}
+                  rx={10}
+                  fill="white"
+                  stroke="#e2e8f0"
+                />
+                <text x={labelX} y={labelY + 4} textAnchor="middle" fontSize="10.5" fontWeight={600} fill="#4338ca">
+                  {label}
                 </text>
               </g>
             );
@@ -99,9 +121,12 @@ export function Network() {
             const p = positions.get(name)!;
             return (
               <g key={name}>
-                <circle cx={p.x} cy={p.y} r={26} fill="#eef2ff" stroke="#6366f1" strokeWidth={1.5} />
-                <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize="10" fontWeight={600} fill="#4338ca">
-                  {name.slice(0, 8)}
+                <circle cx={p.x} cy={p.y} r={nodeR} fill="#eef2ff" stroke="#6366f1" strokeWidth={1.5} />
+                <text x={p.x} y={p.y + 5} textAnchor="middle" fontSize="12" fontWeight={700} fill="#4338ca">
+                  {initials(name)}
+                </text>
+                <text x={p.x} y={p.y + nodeR + 15} textAnchor="middle" fontSize="11" fontWeight={500} fill="#334155">
+                  {name}
                 </text>
               </g>
             );

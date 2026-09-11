@@ -129,6 +129,37 @@ export function getNetTotals(
   return { totalDebt, totalReceivable };
 }
 
+/**
+ * Satu edge net per pasangan orang untuk seluruh data hutang (dipakai untuk visualisasi Jaringan).
+ * Kalau dua arah (A→B dan B→A), digabung jadi satu panah net.
+ * Kalau cuma satu arah, tetap tampil apa adanya. Pasangan yang net-nya nol (lunas/saling menutup) tidak dimasukkan.
+ */
+export function getNetEdges(debts: Debt[], payments: Payment[]): { fromId: string; toId: string; amount: number }[] {
+  const map = new Map<string, { a: string; b: string; aToB: number; bToA: number }>();
+
+  for (const debt of debts) {
+    if (debt.status === 'CANCELLED') continue;
+    const remaining = getRemainingDebt(debt, payments);
+    if (remaining <= 0) continue;
+
+    const [a, b] = [debt.debtorId, debt.creditorId].sort();
+    const key = `${a}|${b}`;
+    if (!map.has(key)) map.set(key, { a, b, aToB: 0, bToA: 0 });
+    const entry = map.get(key)!;
+    if (debt.debtorId === a) entry.aToB += remaining;
+    else entry.bToA += remaining;
+  }
+
+  const result: { fromId: string; toId: string; amount: number }[] = [];
+  for (const { a, b, aToB, bToA } of map.values()) {
+    const diff = aToB - bToA;
+    if (diff === 0) continue;
+    if (diff > 0) result.push({ fromId: a, toId: b, amount: diff });
+    else result.push({ fromId: b, toId: a, amount: -diff });
+  }
+  return result;
+}
+
 export function getActiveDebtsCount(debts: Debt[]): number {
   return debts.filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL').length;
 }

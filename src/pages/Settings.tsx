@@ -1,11 +1,11 @@
 import { useRef } from 'react';
 import { usePersons, useSettings } from '../hooks/useData';
 import { updateSettings, exportData, downloadBackup, validateBackup, importData, resetAllData } from '../services/settingsRepo';
+import { deleteAllDebts } from '../services/debtRepo';
 import { Card, Button, Label, Select } from '../components/ui';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import { seedDemoData, clearDemoData, isEmpty } from '../data/seed';
-import { deleteAllDebts } from '../services/debtRepo'
 
 export function Settings() {
   const persons = usePersons();

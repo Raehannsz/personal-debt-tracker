@@ -2,13 +2,12 @@ import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
 import {
   getNetTotals,
+  getNetEdges,
   getActiveDebtsCount,
   getNearestDueDate,
-  getRemainingDebt,
 } from '../services/debtLogic';
 import { formatCurrency, formatDate } from '../utils/format';
-import { Card, Button, EmptyState, Badge } from '../components/ui';
-import { statusColor, statusLabel } from '../components/debtStatus';
+import { Card, Button, EmptyState } from '../components/ui';
 
 export function Dashboard() {
   const debts = useDebts();
@@ -24,7 +23,10 @@ export function Dashboard() {
   const nearestDue = getNearestDueDate(debts);
   const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
 
-  const recent = debts.slice(0, 5);
+  const netEdges = getNetEdges(debts, payments)
+    .map((e) => ({ from: personName(e.fromId), to: personName(e.toId), amount: e.amount }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5);
 
   if (persons.length === 0) {
     return (
@@ -81,12 +83,12 @@ export function Dashboard() {
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-semibold text-slate-800 text-sm">Transaksi Terbaru</h3>
+          <h3 className="font-semibold text-slate-800 text-sm">Ringkasan Hutang (Net)</h3>
           <Link to="/hutang" className="text-xs text-indigo-600 font-medium">
             Lihat semua
           </Link>
         </div>
-        {recent.length === 0 ? (
+        {netEdges.length === 0 ? (
           <Card className="p-4">
             <EmptyState
               title="Belum ada transaksi"
@@ -100,27 +102,18 @@ export function Dashboard() {
           </Card>
         ) : (
           <div className="space-y-2">
-            {recent.map((d) => {
-              const remaining = getRemainingDebt(d, payments);
-              return (
-                <Link key={d.id} to={`/hutang/${d.id}`}>
-                  <Card className="p-3.5 hover:border-indigo-200 transition">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-slate-800">
-                        {personName(d.debtorId)} → {personName(d.creditorId)}
-                      </p>
-                      <Badge color={statusColor(d.status)}>{statusLabel(d.status)}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <p className="text-sm text-slate-500">{formatDate(d.transactionDate, true)}</p>
-                      <p className="text-sm font-semibold text-slate-800">
-                        {formatCurrency(remaining)}
-                      </p>
-                    </div>
-                  </Card>
-                </Link>
-              );
-            })}
+            {netEdges.map((e, i) => (
+              <Link key={i} to="/hutang">
+                <Card className="p-3.5 hover:border-indigo-200 transition">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-800">
+                      {e.from} → {e.to}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-800">{formatCurrency(e.amount)}</p>
+                  </div>
+                </Card>
+              </Link>
+            ))}
           </div>
         )}
       </div>
