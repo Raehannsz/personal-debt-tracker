@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { usePerson, useDebts, usePayments, useSettings, usePersons } from '../hooks/useData';
 import { getPersonBalance, getNetBalance, getRemainingDebt } from '../services/debtLogic';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, formatDate, formatTime } from '../utils/format';
 import { Card, Badge } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 
@@ -81,7 +81,9 @@ export function PersonDetail() {
                       <Badge color={statusColor(d.status)}>{statusLabel(d.status)}</Badge>
                     </div>
                     <div className="flex items-center justify-between mt-1.5">
-                      <p className="text-xs text-slate-500">{formatDate(d.transactionDate, true)}</p>
+                      <p className="text-xs text-slate-500">
+                        {formatDate(d.transactionDate, true)} · {formatTime(d.createdAt)}
+                      </p>
                       <p className="text-sm font-semibold text-slate-800">{formatCurrency(remaining)}</p>
                     </div>
                   </Card>

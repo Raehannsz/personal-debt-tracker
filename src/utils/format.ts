@@ -26,6 +26,20 @@ export function formatDate(iso: string | null | undefined, short = false): strin
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/** Jam pencatatan dalam zona waktu Jakarta (GMT+7 / WIB), terlepas dari timezone perangkat. */
+export function formatTime(iso: string | null | undefined): string {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
+  const time = new Intl.DateTimeFormat('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Jakarta',
+  }).format(d);
+  return `${time} WIB`;
+}
+
 export function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);

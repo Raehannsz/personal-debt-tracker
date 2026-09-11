@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
 import { getRemainingDebt, getNetPairs } from '../services/debtLogic';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, formatDate, formatTime } from '../utils/format';
 import { Card, Badge, Button, Input, EmptyState } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { DebtFormModal } from '../components/DebtFormModal';
 
 type FilterKey = 'ALL' | 'MY_DEBT' | 'MY_RECEIVABLE' | 'UNPAID' | 'PAID';
+type SortField = 'date' | 'amount';
+type SortDir = 'asc' | 'desc';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'ALL', label: 'Semua' },
@@ -15,6 +17,11 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'MY_RECEIVABLE', label: 'Piutang saya' },
   { key: 'UNPAID', label: 'Belum lunas' },
   { key: 'PAID', label: 'Lunas' },
+];
+
+const SORT_FIELDS: { key: SortField; label: string }[] = [
+  { key: 'date', label: 'Tanggal' },
+  { key: 'amount', label: 'Nominal' },
 ];
 
 export function Debts() {
@@ -25,6 +32,8 @@ export function Debts() {
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
 
@@ -43,8 +52,17 @@ export function Debts() {
         (d) => personName(d.debtorId).toLowerCase().includes(q) || personName(d.creditorId).toLowerCase().includes(q)
       );
     }
+
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      if (sortField === 'amount') {
+        return (getRemainingDebt(a, payments) - getRemainingDebt(b, payments)) * dir;
+      }
+      return (new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime()) * dir;
+    });
+
     return list;
-  }, [debts, filter, search, settings.myPersonId, persons]);
+  }, [debts, filter, search, settings.myPersonId, persons, sortField, sortDir, payments]);
 
   const netPairs = useMemo(() => getNetPairs(debts, payments), [debts, payments]);
 
@@ -104,6 +122,32 @@ export function Debts() {
               </button>
             ))}
           </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 shrink-0">Urutkan:</span>
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+              {SORT_FIELDS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setSortField(f.key)}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition ${
+                    sortField === f.key
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-slate-200 text-slate-600'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                className="shrink-0 flex items-center gap-1 rounded-full px-3.5 py-1.5 text-xs font-medium border bg-white border-slate-200 text-slate-600"
+                title={sortDir === 'asc' ? 'Ascending (kecil → besar)' : 'Descending (besar → kecil)'}
+              >
+                {sortDir === 'asc' ? '↑ Ascending' : '↓ Descending'}
+              </button>
+            </div>
+          </div>
         </>
       )}
 
@@ -137,7 +181,9 @@ export function Debts() {
                     <Badge color={statusColor(d.status)}>{statusLabel(d.status)}</Badge>
                   </div>
                   <div className="flex items-center justify-between mt-1.5">
-                    <p className="text-xs text-slate-500">{formatDate(d.transactionDate, true)}</p>
+                    <p className="text-xs text-slate-500">
+                      {formatDate(d.transactionDate, true)} · {formatTime(d.createdAt)}
+                    </p>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-slate-800">{formatCurrency(remaining)}</p>
                       {remaining !== d.amount && remaining > 0 && (

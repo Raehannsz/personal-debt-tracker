@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDebt, usePaymentsForDebt, usePersons } from '../hooks/useData';
 import { getTotalPaid, getRemainingDebt } from '../services/debtLogic';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, formatDate, formatTime } from '../utils/format';
 import { Card, Badge, Button } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { PaymentFormModal } from '../components/PaymentFormModal';
@@ -84,6 +84,10 @@ export function DebtDetail() {
             <span className="text-slate-800">{formatDate(debt.transactionDate)}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-slate-500">Dicatat pukul</span>
+            <span className="text-slate-800">{formatTime(debt.createdAt)}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-500">Jatuh tempo</span>
             <span className="text-slate-800">{formatDate(debt.dueDate)}</span>
           </div>
@@ -126,7 +130,9 @@ export function DebtDetail() {
             {payments.map((p) => (
               <Card key={p.id} className="p-3.5 flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-800">{formatDate(p.paymentDate, true)}</p>
+                  <p className="text-sm text-slate-800">
+                    {formatDate(p.paymentDate, true)} · {formatTime(p.createdAt)}
+                  </p>
                   {p.notes && <p className="text-xs text-slate-500 mt-0.5">{p.notes}</p>}
                 </div>
                 <p className="text-sm font-semibold text-emerald-600">{formatCurrency(p.amount)}</p>
