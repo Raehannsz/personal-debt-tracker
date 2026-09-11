@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
-import { getRemainingDebt } from '../services/debtLogic';
+import { getRemainingDebt, getNetPairs } from '../services/debtLogic';
 import { formatCurrency, formatDate } from '../utils/format';
 import { Card, Badge, Button, Input, EmptyState } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
@@ -46,12 +46,44 @@ export function Debts() {
     return list;
   }, [debts, filter, search, settings.myPersonId, persons]);
 
+  const netPairs = useMemo(() => getNetPairs(debts, payments), [debts, payments]);
+
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-slate-800">Hutang</h2>
         <Button onClick={() => setShowForm(true)}>+ Tambah Hutang</Button>
       </div>
+
+      {netPairs.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Ringkasan Net</h3>
+          <div className="space-y-2">
+            {netPairs.map((pair, i) => (
+              <Card key={i} className="p-3.5 bg-indigo-50/50 border-indigo-100">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-slate-800">
+                    {pair.settled ? (
+                      <>
+                        {personName(pair.fromId)} ↔ {personName(pair.toId)}
+                      </>
+                    ) : (
+                      <>
+                        {personName(pair.fromId)} → {personName(pair.toId)}
+                      </>
+                    )}
+                  </p>
+                  {pair.settled ? (
+                    <Badge color="slate">Saling menutup</Badge>
+                  ) : (
+                    <p className="text-sm font-semibold text-indigo-700">{formatCurrency(pair.amount)}</p>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {persons.length > 0 && (
         <>

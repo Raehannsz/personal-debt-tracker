@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { usePerson, useDebts, usePayments, useSettings, usePersons } from '../hooks/useData';
-import { getPersonBalance, getRemainingDebt } from '../services/debtLogic';
+import { getPersonBalance, getNetBalance, getRemainingDebt } from '../services/debtLogic';
 import { formatCurrency, formatDate } from '../utils/format';
 import { Card, Badge } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
@@ -19,6 +19,7 @@ export function PersonDetail() {
 
   const personName = (pid: string) => persons.find((p) => p.id === pid)?.name ?? '—';
   const balance = settings.myPersonId ? getPersonBalance(settings.myPersonId, person.id, debts, payments) : null;
+  const net = settings.myPersonId ? getNetBalance(settings.myPersonId, person.id, debts, payments) : null;
   const relatedDebts = debts.filter(
     (d) => (d.debtorId === person.id || d.creditorId === person.id) && d.status !== 'CANCELLED'
   );
@@ -32,7 +33,7 @@ export function PersonDetail() {
         )}
       </div>
 
-      {balance && !person.isMe && (
+      {balance && net && !person.isMe && (
         <Card className="p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Saya berhutang kepada {person.name}</span>
@@ -42,6 +43,16 @@ export function PersonDetail() {
             <span className="text-slate-500">{person.name} berhutang kepada saya</span>
             <span className="font-semibold text-emerald-600">{formatCurrency(balance.owedToMe)}</span>
           </div>
+          {balance.iOwe > 0 && balance.owedToMe > 0 && (
+            <div className="flex justify-between text-sm pt-2 border-t border-slate-100">
+              <span className="text-slate-700 font-medium">
+                Net {net.direction === 'I_OWE' ? `(saya → ${person.name})` : `(${person.name} → saya)`}
+              </span>
+              <span className={`font-bold ${net.direction === 'I_OWE' ? 'text-red-600' : net.direction === 'SETTLED' ? 'text-slate-500' : 'text-emerald-600'}`}>
+                {net.direction === 'SETTLED' ? 'Lunas (saling menutup)' : formatCurrency(net.amount)}
+              </span>
+            </div>
+          )}
         </Card>
       )}
 

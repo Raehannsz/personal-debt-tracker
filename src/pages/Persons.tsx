@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePersons, useDebts, usePayments } from '../hooks/useData';
-import { getPersonBalance } from '../services/debtLogic';
+import { getNetBalance } from '../services/debtLogic';
 import { useSettings } from '../hooks/useData';
 import { formatCurrency } from '../utils/format';
 import { Card, Button, Input, EmptyState } from '../components/ui';
@@ -68,8 +68,8 @@ export function Persons() {
       ) : (
         <div className="space-y-2">
           {filtered.map((p) => {
-            const balance = settings.myPersonId
-              ? getPersonBalance(settings.myPersonId, p.id, debts, payments)
+            const net = settings.myPersonId
+              ? getNetBalance(settings.myPersonId, p.id, debts, payments)
               : null;
             return (
               <Card key={p.id} className="p-3.5">
@@ -103,20 +103,17 @@ export function Persons() {
                     </button>
                   </div>
                 </div>
-                {balance && !p.isMe && (balance.iOwe > 0 || balance.owedToMe > 0) && (
-                  <div className="mt-2 pt-2 border-t border-slate-100 text-xs space-y-1">
-                    {balance.iOwe > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Saya berhutang kepada {p.name}</span>
-                        <span className="font-medium text-red-600">{formatCurrency(balance.iOwe)}</span>
-                      </div>
-                    )}
-                    {balance.owedToMe > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">{p.name} berhutang kepada saya</span>
-                        <span className="font-medium text-emerald-600">{formatCurrency(balance.owedToMe)}</span>
-                      </div>
-                    )}
+                {net && !p.isMe && net.direction !== 'SETTLED' && (
+                  <div className="mt-2 pt-2 border-t border-slate-100 text-xs flex justify-between">
+                    <span className="text-slate-500">
+                      {net.direction === 'I_OWE'
+                        ? `Saya berhutang kepada ${p.name}`
+                        : `${p.name} berhutang kepada saya`}
+                      <span className="text-slate-400"> (net)</span>
+                    </span>
+                    <span className={`font-medium ${net.direction === 'I_OWE' ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {formatCurrency(net.amount)}
+                    </span>
                   </div>
                 )}
               </Card>
