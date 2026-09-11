@@ -1,0 +1,107 @@
+import { db, genId, nowISO } from '../lib/db';
+import type { Debt, Payment } from '../types';
+import { computeDebtStatus } from './debtLogic';
+
+export async function listDebts(): Promise<Debt[]> {
+  const all = await db.debts.toArray();
+  return all.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
+}
+
+export async function listPayments(): Promise<Payment[]> {
+  return db.payments.toArray();
+}
+
+export async function getDebt(id: string): Promise<Debt | undefined> {
+  return db.debts.get(id);
+}
+
+export async function getPaymentsForDebt(debtId: string): Promise<Payment[]> {
+  const payments = await db.payments.where('debtId').equals(debtId).toArray();
+  return payments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+}
+
+export async function createDebt(input: {
+  debtorId: string;
+  creditorId: string;
+  amount: number;
+  description?: string;
+  transactionDate: string;
+  dueDate?: string | null;
+}): Promise<Debt> {
+  const now = nowISO();
+  const debt: Debt = {
+    id: genId(),
+    debtorId: input.debtorId,
+    creditorId: input.creditorId,
+    amount: input.amount,
+    description: input.description?.trim() || undefined,
+    transactionDate: input.transactionDate,
+    dueDate: input.dueDate || null,
+    status: 'ACTIVE',
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.debts.add(debt);
+  return debt;
+}
+
+export async function updateDebt(
+  id: string,
+  input: {
+    debtorId: string;
+    creditorId: string;
+    amount: number;
+    description?: string;
+    transactionDate: string;
+    dueDate?: string | null;
+  }
+): Promise<void> {
+  const debt = await db.debts.get(id);
+  if (!debt) return;
+  const payments = await getPaymentsForDebt(id);
+  const updated: Partial<Debt> = {
+    debtorId: input.debtorId,
+    creditorId: input.creditorId,
+    amount: input.amount,
+    description: input.description?.trim() || undefined,
+    transactionDate: input.transactionDate,
+    dueDate: input.dueDate || null,
+    updatedAt: nowISO(),
+  };
+  updated.status = computeDebtStatus({ ...debt, ...updated } as Debt, payments);
+  await db.debts.update(id, updated);
+}
+
+export async function cancelDebt(id: string): Promise<void> {
+  await db.debts.update(id, { status: 'CANCELLED', updatedAt: nowISO() });
+}
+
+export async function deleteDebt(id: string): Promise<void> {
+  await db.payments.where('debtId').equals(id).delete();
+  await db.debts.delete(id);
+}
+
+export async function addPayment(input: {
+  debtId: string;
+  amount: number;
+  paymentDate: string;
+  notes?: string;
+}): Promise<Payment> {
+  const payment: Payment = {
+    id: genId(),
+    debtId: input.debtId,
+    amount: input.amount,
+    paymentDate: input.paymentDate,
+    notes: input.notes?.trim() || undefined,
+    createdAt: nowISO(),
+  };
+  await db.payments.add(payment);
+
+  const debt = await db.debts.get(input.debtId);
+  if (debt) {
+    const allPayments = await getPaymentsForDebt(input.debtId);
+    const status = computeDebtStatus(debt, allPayments);
+    await db.debts.update(debt.id, { status, updatedAt: nowISO() });
+  }
+  return payment;
+}
