@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
 import {
-  getTotalDebt,
-  getTotalReceivable,
+  getNetTotals,
   getActiveDebtsCount,
   getNearestDueDate,
   getRemainingDebt,
@@ -18,8 +17,9 @@ export function Dashboard() {
   const settings = useSettings();
 
   const me = settings.myPersonId;
-  const totalDebt = me ? getTotalDebt(me, debts, payments) : 0;
-  const totalReceivable = me ? getTotalReceivable(me, debts, payments) : 0;
+  const { totalDebt, totalReceivable } = me
+    ? getNetTotals(me, persons.map((p) => p.id), debts, payments)
+    : { totalDebt: 0, totalReceivable: 0 };
   const activeCount = getActiveDebtsCount(debts);
   const nearestDue = getNearestDueDate(debts);
   const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';

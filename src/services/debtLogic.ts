@@ -107,6 +107,28 @@ export function getNetPairs(
   return result;
 }
 
+/**
+ * Total hutang & piutang "Saya" yang SUDAH dinetting per pasangan orang.
+ * Kalau saya berhutang ke A Rp65.000 dan A berhutang ke saya Rp46.000,
+ * ini dihitung sebagai hutang saya ke A Rp19.000 saja (bukan 65rb hutang + 46rb piutang terpisah).
+ */
+export function getNetTotals(
+  personId: string,
+  otherPersonIds: string[],
+  debts: Debt[],
+  payments: Payment[]
+): { totalDebt: number; totalReceivable: number } {
+  let totalDebt = 0;
+  let totalReceivable = 0;
+  for (const otherId of otherPersonIds) {
+    if (otherId === personId) continue;
+    const net = getNetBalance(personId, otherId, debts, payments);
+    if (net.direction === 'I_OWE') totalDebt += net.amount;
+    else if (net.direction === 'OWED_TO_ME') totalReceivable += net.amount;
+  }
+  return { totalDebt, totalReceivable };
+}
+
 export function getActiveDebtsCount(debts: Debt[]): number {
   return debts.filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL').length;
 }
