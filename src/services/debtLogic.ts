@@ -60,3 +60,10 @@ export function getNearestDueDate(debts: Debt[]): Debt | null {
     .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
   return upcoming[0] ?? null;
 }
+
+export function getNetBalance(personId: string, otherId: string, debts: Debt[], payments: Payment[]) {
+  const { iOwe, owedToMe } = getPersonBalance(personId, otherId, debts, payments);
+  const diff = iOwe - owedToMe;
+  if (diff === 0) return { amount: 0, direction: 'SETTLED' };
+  return diff > 0 ? { amount: diff, direction: 'I_OWE' } : { amount: -diff, direction: 'OWED_TO_ME' };
+}
