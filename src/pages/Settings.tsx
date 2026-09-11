@@ -5,6 +5,7 @@ import { Card, Button, Label, Select } from '../components/ui';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import { seedDemoData, clearDemoData, isEmpty } from '../data/seed';
+import { deleteAllDebts } from '../services/debtRepo'
 
 export function Settings() {
   const persons = usePersons();
@@ -61,6 +62,18 @@ export function Settings() {
     if (!ok) return;
     await resetAllData();
     showToast('✓ Semua data berhasil direset');
+  }
+
+  async function handleDeleteAllDebts() {
+    const ok = await confirmDialog({
+      title: 'Hapus Semua Hutang?',
+      message: 'Semua transaksi hutang beserta riwayat pembayarannya akan dihapus permanen dan tidak dapat dikembalikan. Data orang tidak akan terhapus. Lanjutkan?',
+      confirmLabel: 'Hapus Semua',
+      danger: true,
+    });
+    if (!ok) return;
+    await deleteAllDebts();
+    showToast('✓ Semua hutang berhasil dihapus');
   }
 
   async function handleSeed() {
@@ -120,6 +133,9 @@ export function Settings() {
           Import Data
         </Button>
         <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportFile} />
+        <Button variant="danger" className="w-full" onClick={handleDeleteAllDebts}>
+          Hapus Semua Hutang
+        </Button>
         <Button variant="danger" className="w-full" onClick={handleReset}>
           Reset Semua Data
         </Button>

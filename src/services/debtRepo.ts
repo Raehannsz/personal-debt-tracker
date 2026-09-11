@@ -105,3 +105,11 @@ export async function addPayment(input: {
   }
   return payment;
 }
+
+/** Hapus SEMUA hutang beserta seluruh riwayat pembayarannya. Data orang tidak ikut terhapus. */
+export async function deleteAllDebts(): Promise<void> {
+  await db.transaction('rw', db.debts, db.payments, async () => {
+    await db.payments.clear();
+    await db.debts.clear();
+  });
+}
