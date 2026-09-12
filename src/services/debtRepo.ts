@@ -106,6 +106,37 @@ export async function addPayment(input: {
   return payment;
 }
 
+/**
+ * Lunasi sekaligus (satu klik) semua hutang aktif/sebagian antara dua orang, dua arah.
+ * Otomatis mencatat pembayaran sebesar sisa hutang masing-masing transaksi — tidak perlu input nominal manual.
+ */
+export async function settleAllBetween(personAId: string, personBId: string): Promise<void> {
+  const related = await db.debts
+    .filter(
+      (d) =>
+        ((d.debtorId === personAId && d.creditorId === personBId) ||
+          (d.debtorId === personBId && d.creditorId === personAId)) &&
+        (d.status === 'ACTIVE' || d.status === 'PARTIAL')
+    )
+    .toArray();
+
+  for (const debt of related) {
+    const payments = await getPaymentsForDebt(debt.id);
+    const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0);
+    const remaining = Math.max(0, debt.amount - paidSoFar);
+    if (remaining <= 0) continue;
+    await db.payments.add({
+      id: genId(),
+      debtId: debt.id,
+      amount: remaining,
+      paymentDate: nowISO(),
+      notes: 'Lunas otomatis',
+      createdAt: nowISO(),
+    });
+    await db.debts.update(debt.id, { status: 'PAID', updatedAt: nowISO() });
+  }
+}
+
 /** Hapus SEMUA hutang beserta seluruh riwayat pembayarannya. Data orang tidak ikut terhapus. */
 export async function deleteAllDebts(): Promise<void> {
   await db.transaction('rw', db.debts, db.payments, async () => {
