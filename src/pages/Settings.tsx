@@ -23,6 +23,18 @@ export function Settings() {
     showToast('✓ Data berhasil diexport');
   }
 
+  /** Backup otomatis & diam-diam sebelum aksi yang menghapus data — jaring pengaman kalau ada mis-tap. */
+  async function autoBackup() {
+    try {
+      const data = await exportData();
+      if (data.persons.length > 0 || data.debts.length > 0) {
+        downloadBackup(data);
+      }
+    } catch (err) {
+      console.error('Auto-backup gagal:', err);
+    }
+  }
+
   function handleImportClick() {
     fileInputRef.current?.click();
   }
@@ -40,14 +52,16 @@ export function Settings() {
       }
       const ok = await confirmDialog({
         title: 'Import Data?',
-        message: 'Semua data saat ini akan digantikan dengan data dari file backup ini. Lanjutkan?',
+        message: 'Semua data saat ini akan digantikan dengan data dari file backup ini. Data yang ada sekarang akan otomatis di-backup dulu sebelum diganti. Lanjutkan?',
         confirmLabel: 'Import',
         danger: true,
       });
       if (!ok) return;
+      await autoBackup();
       await importData(json);
       showToast('✓ Data berhasil diimport');
-    } catch {
+    } catch (err) {
+      console.error('Import gagal:', err);
       showToast('✗ File tidak dapat dibaca atau formatnya tidak valid');
     }
   }
@@ -55,25 +69,27 @@ export function Settings() {
   async function handleReset() {
     const ok = await confirmDialog({
       title: 'Reset Semua Data?',
-      message: 'Semua data akan dihapus dan tidak dapat dikembalikan. Lanjutkan?',
+      message: 'SEMUA data (orang, hutang, pembayaran) akan dihapus permanen. File backup akan otomatis terunduh dulu sebagai jaring pengaman. Lanjutkan?',
       confirmLabel: 'Reset',
       danger: true,
     });
     if (!ok) return;
+    await autoBackup();
     await resetAllData();
-    showToast('✓ Semua data berhasil direset');
+    showToast('✓ Semua data berhasil direset (backup otomatis terunduh)');
   }
 
   async function handleDeleteAllDebts() {
     const ok = await confirmDialog({
       title: 'Hapus Semua Hutang?',
-      message: 'Semua transaksi hutang beserta riwayat pembayarannya akan dihapus permanen dan tidak dapat dikembalikan. Data orang tidak akan terhapus. Lanjutkan?',
+      message: 'Semua transaksi hutang beserta riwayat pembayarannya akan dihapus permanen. Data orang tidak akan terhapus. File backup akan otomatis terunduh dulu sebagai jaring pengaman. Lanjutkan?',
       confirmLabel: 'Hapus Semua',
       danger: true,
     });
     if (!ok) return;
+    await autoBackup();
     await deleteAllDebts();
-    showToast('✓ Semua hutang berhasil dihapus');
+    showToast('✓ Semua hutang berhasil dihapus (backup otomatis terunduh)');
   }
 
   async function handleSeed() {
@@ -81,11 +97,12 @@ export function Settings() {
     if (!empty) {
       const ok = await confirmDialog({
         title: 'Muat Data Contoh?',
-        message: 'Ini akan menggantikan seluruh data yang ada saat ini dengan data contoh. Lanjutkan?',
+        message: 'Ini akan menggantikan seluruh data yang ada saat ini dengan data contoh. Data sekarang akan otomatis di-backup dulu. Lanjutkan?',
         confirmLabel: 'Muat',
         danger: true,
       });
       if (!ok) return;
+      await autoBackup();
       await clearDemoData();
     }
     await seedDemoData();
@@ -95,13 +112,14 @@ export function Settings() {
   async function handleClearDemo() {
     const ok = await confirmDialog({
       title: 'Hapus Semua Data?',
-      message: 'Semua data akan dihapus sehingga kamu bisa mulai dari kosong. Lanjutkan?',
+      message: 'Semua data akan dihapus sehingga kamu bisa mulai dari kosong. File backup akan otomatis terunduh dulu sebagai jaring pengaman. Lanjutkan?',
       confirmLabel: 'Hapus',
       danger: true,
     });
     if (!ok) return;
+    await autoBackup();
     await clearDemoData();
-    showToast('✓ Data berhasil dikosongkan');
+    showToast('✓ Data berhasil dikosongkan (backup otomatis terunduh)');
   }
 
   return (
@@ -133,12 +151,15 @@ export function Settings() {
           Import Data
         </Button>
         <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportFile} />
-        <Button variant="danger" className="w-full" onClick={handleDeleteAllDebts}>
-          Hapus Semua Hutang
-        </Button>
-        <Button variant="danger" className="w-full" onClick={handleReset}>
-          Reset Semua Data
-        </Button>
+        <div className="pt-2 border-t border-slate-100 space-y-3">
+          <p className="text-[11px] text-slate-400">Zona berbahaya — tindakan di bawah ini akan otomatis membuat backup dulu.</p>
+          <Button variant="danger" className="w-full" onClick={handleDeleteAllDebts}>
+            Hapus Semua Hutang
+          </Button>
+          <Button variant="danger" className="w-full" onClick={handleReset}>
+            Reset Semua Data
+          </Button>
+        </div>
       </Card>
 
       <Card className="p-4 space-y-3">

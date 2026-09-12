@@ -95,14 +95,20 @@ export async function addPayment(input: {
     notes: input.notes?.trim() || undefined,
     createdAt: nowISO(),
   };
-  await db.payments.add(payment);
 
-  const debt = await db.debts.get(input.debtId);
-  if (debt) {
-    const allPayments = await getPaymentsForDebt(input.debtId);
-    const status = computeDebtStatus(debt, allPayments);
-    await db.debts.update(debt.id, { status, updatedAt: nowISO() });
-  }
+  // Satu transaksi atomik: simpan pembayaran & update status sekaligus.
+  // Kalau salah satu langkah gagal, semuanya dibatalkan (rollback) — tidak akan ada
+  // kondisi "pembayaran tersimpan tapi status tidak ikut ter-update".
+  await db.transaction('rw', db.payments, db.debts, async () => {
+    await db.payments.add(payment);
+    const debt = await db.debts.get(input.debtId);
+    if (debt) {
+      const allPayments = await getPaymentsForDebt(input.debtId);
+      const status = computeDebtStatus(debt, allPayments);
+      await db.debts.update(debt.id, { status, updatedAt: nowISO() });
+    }
+  });
+
   return payment;
 }
 
@@ -111,30 +117,32 @@ export async function addPayment(input: {
  * Otomatis mencatat pembayaran sebesar sisa hutang masing-masing transaksi — tidak perlu input nominal manual.
  */
 export async function settleAllBetween(personAId: string, personBId: string): Promise<void> {
-  const related = await db.debts
-    .filter(
-      (d) =>
-        ((d.debtorId === personAId && d.creditorId === personBId) ||
-          (d.debtorId === personBId && d.creditorId === personAId)) &&
-        (d.status === 'ACTIVE' || d.status === 'PARTIAL')
-    )
-    .toArray();
+  await db.transaction('rw', db.payments, db.debts, async () => {
+    const related = await db.debts
+      .filter(
+        (d) =>
+          ((d.debtorId === personAId && d.creditorId === personBId) ||
+            (d.debtorId === personBId && d.creditorId === personAId)) &&
+          (d.status === 'ACTIVE' || d.status === 'PARTIAL')
+      )
+      .toArray();
 
-  for (const debt of related) {
-    const payments = await getPaymentsForDebt(debt.id);
-    const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0);
-    const remaining = Math.max(0, debt.amount - paidSoFar);
-    if (remaining <= 0) continue;
-    await db.payments.add({
-      id: genId(),
-      debtId: debt.id,
-      amount: remaining,
-      paymentDate: nowISO(),
-      notes: 'Lunas otomatis',
-      createdAt: nowISO(),
-    });
-    await db.debts.update(debt.id, { status: 'PAID', updatedAt: nowISO() });
-  }
+    for (const debt of related) {
+      const payments = await getPaymentsForDebt(debt.id);
+      const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0);
+      const remaining = Math.max(0, debt.amount - paidSoFar);
+      if (remaining <= 0) continue;
+      await db.payments.add({
+        id: genId(),
+        debtId: debt.id,
+        amount: remaining,
+        paymentDate: nowISO(),
+        notes: 'Lunas otomatis',
+        createdAt: nowISO(),
+      });
+      await db.debts.update(debt.id, { status: 'PAID', updatedAt: nowISO() });
+    }
+  });
 }
 
 /** Hapus SEMUA hutang beserta seluruh riwayat pembayarannya. Data orang tidak ikut terhapus. */

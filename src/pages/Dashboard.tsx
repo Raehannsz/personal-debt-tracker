@@ -38,8 +38,13 @@ export function Dashboard() {
       confirmLabel: 'Lunas',
     });
     if (!ok) return;
-    await settleAllBetween(fromId, toId);
-    showToast('✓ Hutang berhasil ditandai lunas');
+    try {
+      await settleAllBetween(fromId, toId);
+      showToast('✓ Hutang berhasil ditandai lunas');
+    } catch (err) {
+      console.error('Gagal menandai lunas:', err);
+      showToast('✗ Gagal menandai lunas, coba lagi');
+    }
   }
 
   if (persons.length === 0) {

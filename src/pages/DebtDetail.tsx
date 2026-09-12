@@ -37,9 +37,14 @@ export function DebtDetail() {
       danger: true,
     });
     if (!ok) return;
-    await deleteDebt(debt!.id);
-    showToast('✓ Hutang berhasil dihapus');
-    navigate('/hutang');
+    try {
+      await deleteDebt(debt!.id);
+      showToast('✓ Hutang berhasil dihapus');
+      navigate('/hutang');
+    } catch (err) {
+      console.error('Gagal menghapus hutang:', err);
+      showToast('✗ Gagal menghapus, coba lagi');
+    }
   }
 
   async function handleCancel() {
@@ -50,8 +55,13 @@ export function DebtDetail() {
       danger: true,
     });
     if (!ok) return;
-    await cancelDebt(debt!.id);
-    showToast('✓ Hutang dibatalkan');
+    try {
+      await cancelDebt(debt!.id);
+      showToast('✓ Hutang dibatalkan');
+    } catch (err) {
+      console.error('Gagal membatalkan hutang:', err);
+      showToast('✗ Gagal membatalkan, coba lagi');
+    }
   }
 
   return (
