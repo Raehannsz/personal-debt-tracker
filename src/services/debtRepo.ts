@@ -1,22 +1,27 @@
-import { db, genId, nowISO } from '../lib/db';
+import {
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  query,
+  where,
+  runTransaction,
+} from 'firebase/firestore';
+import { db, genId, nowISO } from '../lib/firebase';
 import type { Debt, Payment } from '../types';
 import { computeDebtStatus } from './debtLogic';
 
-export async function listDebts(): Promise<Debt[]> {
-  const all = await db.debts.toArray();
-  return all.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
-}
-
-export async function listPayments(): Promise<Payment[]> {
-  return db.payments.toArray();
-}
-
 export async function getDebt(id: string): Promise<Debt | undefined> {
-  return db.debts.get(id);
+  const snap = await getDoc(doc(db, 'debts', id));
+  return snap.exists() ? (snap.data() as Debt) : undefined;
 }
 
 export async function getPaymentsForDebt(debtId: string): Promise<Payment[]> {
-  const payments = await db.payments.where('debtId').equals(debtId).toArray();
+  const snap = await getDocs(query(collection(db, 'payments'), where('debtId', '==', debtId)));
+  const payments = snap.docs.map((d) => d.data() as Payment);
   return payments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
 }
 
@@ -41,7 +46,7 @@ export async function createDebt(input: {
     createdAt: now,
     updatedAt: now,
   };
-  await db.debts.add(debt);
+  await setDoc(doc(db, 'debts', debt.id), debt);
   return debt;
 }
 
@@ -56,10 +61,11 @@ export async function updateDebt(
     dueDate?: string | null;
   }
 ): Promise<void> {
-  const debt = await db.debts.get(id);
+  const debt = await getDebt(id);
   if (!debt) return;
   const payments = await getPaymentsForDebt(id);
-  const updated: Partial<Debt> = {
+  const merged: Debt = {
+    ...debt,
     debtorId: input.debtorId,
     creditorId: input.creditorId,
     amount: input.amount,
@@ -68,19 +74,25 @@ export async function updateDebt(
     dueDate: input.dueDate || null,
     updatedAt: nowISO(),
   };
-  updated.status = computeDebtStatus({ ...debt, ...updated } as Debt, payments);
-  await db.debts.update(id, updated);
+  merged.status = computeDebtStatus(merged, payments);
+  await updateDoc(doc(db, 'debts', id), { ...merged });
 }
 
 export async function cancelDebt(id: string): Promise<void> {
-  await db.debts.update(id, { status: 'CANCELLED', updatedAt: nowISO() });
+  await updateDoc(doc(db, 'debts', id), { status: 'CANCELLED', updatedAt: nowISO() });
 }
 
 export async function deleteDebt(id: string): Promise<void> {
-  await db.payments.where('debtId').equals(id).delete();
-  await db.debts.delete(id);
+  const paymentsSnap = await getDocs(query(collection(db, 'payments'), where('debtId', '==', id)));
+  await Promise.all(paymentsSnap.docs.map((p) => deleteDoc(p.ref)));
+  await deleteDoc(doc(db, 'debts', id));
 }
 
+/**
+ * Satu transaksi atomik: simpan pembayaran & update status debt sekaligus.
+ * Kalau salah satu langkah gagal, semuanya rollback (Firestore transaction) — tidak
+ * akan ada kondisi "pembayaran tersimpan tapi status tidak ikut ter-update".
+ */
 export async function addPayment(input: {
   debtId: string;
   amount: number;
@@ -96,17 +108,19 @@ export async function addPayment(input: {
     createdAt: nowISO(),
   };
 
-  // Satu transaksi atomik: simpan pembayaran & update status sekaligus.
-  // Kalau salah satu langkah gagal, semuanya dibatalkan (rollback) — tidak akan ada
-  // kondisi "pembayaran tersimpan tapi status tidak ikut ter-update".
-  await db.transaction('rw', db.payments, db.debts, async () => {
-    await db.payments.add(payment);
-    const debt = await db.debts.get(input.debtId);
-    if (debt) {
-      const allPayments = await getPaymentsForDebt(input.debtId);
-      const status = computeDebtStatus(debt, allPayments);
-      await db.debts.update(debt.id, { status, updatedAt: nowISO() });
-    }
+  await runTransaction(db, async (tx) => {
+    const debtRef = doc(db, 'debts', input.debtId);
+    const debtSnap = await tx.get(debtRef);
+    if (!debtSnap.exists()) throw new Error('Hutang tidak ditemukan');
+    const debt = debtSnap.data() as Debt;
+
+    // Transaksi Firestore butuh semua read sebelum write; ambil payment yang sudah ada dulu.
+    const existingPayments = await getPaymentsForDebt(input.debtId);
+    const allPayments = [...existingPayments, payment];
+    const status = computeDebtStatus(debt, allPayments);
+
+    tx.set(doc(db, 'payments', payment.id), payment);
+    tx.update(debtRef, { status, updatedAt: nowISO() });
   });
 
   return payment;
@@ -114,41 +128,44 @@ export async function addPayment(input: {
 
 /**
  * Lunasi sekaligus (satu klik) semua hutang aktif/sebagian antara dua orang, dua arah.
- * Otomatis mencatat pembayaran sebesar sisa hutang masing-masing transaksi — tidak perlu input nominal manual.
+ * Otomatis mencatat pembayaran sebesar sisa hutang masing-masing transaksi.
  */
 export async function settleAllBetween(personAId: string, personBId: string): Promise<void> {
-  await db.transaction('rw', db.payments, db.debts, async () => {
-    const related = await db.debts
-      .filter(
-        (d) =>
-          ((d.debtorId === personAId && d.creditorId === personBId) ||
-            (d.debtorId === personBId && d.creditorId === personAId)) &&
-          (d.status === 'ACTIVE' || d.status === 'PARTIAL')
-      )
-      .toArray();
+  const debtsCol = collection(db, 'debts');
+  const [ab, ba] = await Promise.all([
+    getDocs(query(debtsCol, where('debtorId', '==', personAId), where('creditorId', '==', personBId))),
+    getDocs(query(debtsCol, where('debtorId', '==', personBId), where('creditorId', '==', personAId))),
+  ]);
+  const related = [...ab.docs, ...ba.docs]
+    .map((d) => d.data() as Debt)
+    .filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL');
 
-    for (const debt of related) {
-      const payments = await getPaymentsForDebt(debt.id);
-      const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0);
-      const remaining = Math.max(0, debt.amount - paidSoFar);
-      if (remaining <= 0) continue;
-      await db.payments.add({
-        id: genId(),
-        debtId: debt.id,
-        amount: remaining,
-        paymentDate: nowISO(),
-        notes: 'Lunas otomatis',
-        createdAt: nowISO(),
-      });
-      await db.debts.update(debt.id, { status: 'PAID', updatedAt: nowISO() });
-    }
-  });
+  for (const debt of related) {
+    const payments = await getPaymentsForDebt(debt.id);
+    const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0);
+    const remaining = Math.max(0, debt.amount - paidSoFar);
+    if (remaining <= 0) continue;
+    const payment: Payment = {
+      id: genId(),
+      debtId: debt.id,
+      amount: remaining,
+      paymentDate: nowISO(),
+      notes: 'Lunas otomatis',
+      createdAt: nowISO(),
+    };
+    await setDoc(doc(db, 'payments', payment.id), payment);
+    await updateDoc(doc(db, 'debts', debt.id), { status: 'PAID', updatedAt: nowISO() });
+  }
 }
 
 /** Hapus SEMUA hutang beserta seluruh riwayat pembayarannya. Data orang tidak ikut terhapus. */
 export async function deleteAllDebts(): Promise<void> {
-  await db.transaction('rw', db.debts, db.payments, async () => {
-    await db.payments.clear();
-    await db.debts.clear();
-  });
+  const [debtsSnap, paymentsSnap] = await Promise.all([
+    getDocs(collection(db, 'debts')),
+    getDocs(collection(db, 'payments')),
+  ]);
+  await Promise.all([
+    ...debtsSnap.docs.map((d) => deleteDoc(d.ref)),
+    ...paymentsSnap.docs.map((p) => deleteDoc(p.ref)),
+  ]);
 }

@@ -13,25 +13,23 @@ export function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleMyPersonChange(id: string) {
-    await updateSettings({ myPersonId: id || null });
-    showToast('✓ Profil berhasil diperbarui');
+    try {
+      await updateSettings({ myPersonId: id || null });
+      showToast('✓ Profil berhasil diperbarui');
+    } catch (err) {
+      console.error('Gagal memperbarui profil:', err);
+      showToast('✗ Gagal menyimpan, coba lagi');
+    }
   }
 
   async function handleExport() {
-    const data = await exportData();
-    downloadBackup(data);
-    showToast('✓ Data berhasil diexport');
-  }
-
-  /** Backup otomatis & diam-diam sebelum aksi yang menghapus data — jaring pengaman kalau ada mis-tap. */
-  async function autoBackup() {
     try {
       const data = await exportData();
-      if (data.persons.length > 0 || data.debts.length > 0) {
-        downloadBackup(data);
-      }
+      downloadBackup(data);
+      showToast('✓ Data berhasil diexport');
     } catch (err) {
-      console.error('Auto-backup gagal:', err);
+      console.error('Gagal export data:', err);
+      showToast('✗ Gagal export, coba lagi');
     }
   }
 
@@ -52,12 +50,11 @@ export function Settings() {
       }
       const ok = await confirmDialog({
         title: 'Import Data?',
-        message: 'Semua data saat ini akan digantikan dengan data dari file backup ini. Data yang ada sekarang akan otomatis di-backup dulu sebelum diganti. Lanjutkan?',
+        message: 'Semua data saat ini akan digantikan dengan data dari file backup ini. Lanjutkan?',
         confirmLabel: 'Import',
         danger: true,
       });
       if (!ok) return;
-      await autoBackup();
       await importData(json);
       showToast('✓ Data berhasil diimport');
     } catch (err) {
@@ -69,57 +66,73 @@ export function Settings() {
   async function handleReset() {
     const ok = await confirmDialog({
       title: 'Reset Semua Data?',
-      message: 'SEMUA data (orang, hutang, pembayaran) akan dihapus permanen. File backup akan otomatis terunduh dulu sebagai jaring pengaman. Lanjutkan?',
+      message: 'SEMUA data (orang, hutang, pembayaran) akan dihapus permanen dan tidak dapat dikembalikan. Lanjutkan?',
       confirmLabel: 'Reset',
       danger: true,
     });
     if (!ok) return;
-    await autoBackup();
-    await resetAllData();
-    showToast('✓ Semua data berhasil direset (backup otomatis terunduh)');
+    try {
+      await resetAllData();
+      showToast('✓ Semua data berhasil direset');
+    } catch (err) {
+      console.error('Gagal reset data:', err);
+      showToast('✗ Gagal reset data, coba lagi');
+    }
   }
 
   async function handleDeleteAllDebts() {
     const ok = await confirmDialog({
       title: 'Hapus Semua Hutang?',
-      message: 'Semua transaksi hutang beserta riwayat pembayarannya akan dihapus permanen. Data orang tidak akan terhapus. File backup akan otomatis terunduh dulu sebagai jaring pengaman. Lanjutkan?',
+      message: 'Semua transaksi hutang beserta riwayat pembayarannya akan dihapus permanen dan tidak dapat dikembalikan. Data orang tidak akan terhapus. Lanjutkan?',
       confirmLabel: 'Hapus Semua',
       danger: true,
     });
     if (!ok) return;
-    await autoBackup();
-    await deleteAllDebts();
-    showToast('✓ Semua hutang berhasil dihapus (backup otomatis terunduh)');
+    try {
+      await deleteAllDebts();
+      showToast('✓ Semua hutang berhasil dihapus');
+    } catch (err) {
+      console.error('Gagal menghapus hutang:', err);
+      showToast('✗ Gagal menghapus, coba lagi');
+    }
   }
 
   async function handleSeed() {
-    const empty = await isEmpty();
-    if (!empty) {
-      const ok = await confirmDialog({
-        title: 'Muat Data Contoh?',
-        message: 'Ini akan menggantikan seluruh data yang ada saat ini dengan data contoh. Data sekarang akan otomatis di-backup dulu. Lanjutkan?',
-        confirmLabel: 'Muat',
-        danger: true,
-      });
-      if (!ok) return;
-      await autoBackup();
-      await clearDemoData();
+    try {
+      const empty = await isEmpty();
+      if (!empty) {
+        const ok = await confirmDialog({
+          title: 'Muat Data Contoh?',
+          message: 'Ini akan menggantikan seluruh data yang ada saat ini dengan data contoh. Lanjutkan?',
+          confirmLabel: 'Muat',
+          danger: true,
+        });
+        if (!ok) return;
+        await clearDemoData();
+      }
+      await seedDemoData();
+      showToast('✓ Data contoh berhasil dimuat');
+    } catch (err) {
+      console.error('Gagal memuat data contoh:', err);
+      showToast('✗ Gagal memuat data contoh, coba lagi');
     }
-    await seedDemoData();
-    showToast('✓ Data contoh berhasil dimuat');
   }
 
   async function handleClearDemo() {
     const ok = await confirmDialog({
       title: 'Hapus Semua Data?',
-      message: 'Semua data akan dihapus sehingga kamu bisa mulai dari kosong. File backup akan otomatis terunduh dulu sebagai jaring pengaman. Lanjutkan?',
+      message: 'Semua data akan dihapus sehingga kamu bisa mulai dari kosong dan tidak dapat dikembalikan. Lanjutkan?',
       confirmLabel: 'Hapus',
       danger: true,
     });
     if (!ok) return;
-    await autoBackup();
-    await clearDemoData();
-    showToast('✓ Data berhasil dikosongkan (backup otomatis terunduh)');
+    try {
+      await clearDemoData();
+      showToast('✓ Data berhasil dikosongkan');
+    } catch (err) {
+      console.error('Gagal mengosongkan data:', err);
+      showToast('✗ Gagal, coba lagi');
+    }
   }
 
   return (
@@ -152,7 +165,7 @@ export function Settings() {
         </Button>
         <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportFile} />
         <div className="pt-2 border-t border-slate-100 space-y-3">
-          <p className="text-[11px] text-slate-400">Zona berbahaya — tindakan di bawah ini akan otomatis membuat backup dulu.</p>
+          <p className="text-[11px] text-slate-400">Zona berbahaya — data yang dihapus tidak dapat dikembalikan kecuali kamu sudah export manual sebelumnya.</p>
           <Button variant="danger" className="w-full" onClick={handleDeleteAllDebts}>
             Hapus Semua Hutang
           </Button>
@@ -172,7 +185,7 @@ export function Settings() {
         </Button>
       </Card>
 
-      <p className="text-center text-xs text-slate-400 pt-2">Personal Debt Tracker · Data tersimpan di perangkat ini</p>
+      <p className="text-center text-xs text-slate-400 pt-2">Personal Debt Tracker · Data sinkron real-time via Firebase</p>
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { db } from '../lib/db';
+import { collection, doc, getDoc, setDoc, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import type { Settings, BackupData } from '../types';
 
 const DEFAULT_SETTINGS: Settings = {
@@ -7,31 +8,33 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'light',
 };
 
+const settingsRef = doc(db, 'meta', 'settings');
+
 export async function getSettings(): Promise<Settings> {
-  const s = await db.settings.get('settings');
-  return s ?? DEFAULT_SETTINGS;
+  const snap = await getDoc(settingsRef);
+  return snap.exists() ? (snap.data() as Settings) : DEFAULT_SETTINGS;
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
   const current = await getSettings();
   const updated = { ...current, ...patch, id: 'settings' as const };
-  await db.settings.put(updated);
+  await setDoc(settingsRef, updated);
   return updated;
 }
 
 export async function exportData(): Promise<BackupData> {
-  const [persons, debts, payments, settings] = await Promise.all([
-    db.persons.toArray(),
-    db.debts.toArray(),
-    db.payments.toArray(),
+  const [personsSnap, debtsSnap, paymentsSnap, settings] = await Promise.all([
+    getDocs(collection(db, 'persons')),
+    getDocs(collection(db, 'debts')),
+    getDocs(collection(db, 'payments')),
     getSettings(),
   ]);
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
-    persons,
-    debts,
-    payments,
+    persons: personsSnap.docs.map((d) => d.data()) as BackupData['persons'],
+    debts: debtsSnap.docs.map((d) => d.data()) as BackupData['debts'],
+    payments: paymentsSnap.docs.map((d) => d.data()) as BackupData['payments'],
     settings,
   };
 }
@@ -60,24 +63,29 @@ export function validateBackup(data: unknown): data is BackupData {
   );
 }
 
+async function clearCollection(name: string): Promise<void> {
+  const snap = await getDocs(collection(db, name));
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
+}
+
 export async function importData(data: BackupData): Promise<void> {
-  await db.transaction('rw', db.persons, db.debts, db.payments, db.settings, async () => {
-    await db.persons.clear();
-    await db.debts.clear();
-    await db.payments.clear();
-    await db.settings.clear();
-    await db.persons.bulkAdd(data.persons);
-    await db.debts.bulkAdd(data.debts);
-    await db.payments.bulkAdd(data.payments);
-    await db.settings.put({ ...data.settings, id: 'settings' });
-  });
+  await Promise.all([clearCollection('persons'), clearCollection('debts'), clearCollection('payments')]);
+
+  const batch = writeBatch(db);
+  data.persons.forEach((p) => batch.set(doc(db, 'persons', p.id), p));
+  data.debts.forEach((d) => batch.set(doc(db, 'debts', d.id), d));
+  data.payments.forEach((p) => batch.set(doc(db, 'payments', p.id), p));
+  batch.set(settingsRef, { ...data.settings, id: 'settings' });
+  await batch.commit();
 }
 
 export async function resetAllData(): Promise<void> {
-  await db.transaction('rw', db.persons, db.debts, db.payments, db.settings, async () => {
-    await db.persons.clear();
-    await db.debts.clear();
-    await db.payments.clear();
-    await db.settings.clear();
-  });
+  await Promise.all([
+    clearCollection('persons'),
+    clearCollection('debts'),
+    clearCollection('payments'),
+    deleteDoc(settingsRef),
+  ]);
 }

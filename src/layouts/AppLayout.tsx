@@ -18,11 +18,11 @@ function useOnlineStatus() {
 }
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: '', end: true },
-  { to: '/hutang', label: 'Hutang', icon: '' },
-  { to: '/orang', label: 'Orang', icon: '' },
-  { to: '/jaringan', label: 'Jaringan', icon: '' },
-  { to: '/settings', label: 'Settings', icon: '' },
+  { to: '/', label: 'Dashboard', icon: '🏠', end: true },
+  { to: '/hutang', label: 'Hutang', icon: '💰' },
+  { to: '/orang', label: 'Orang', icon: '👥' },
+  { to: '/jaringan', label: 'Jaringan', icon: '🔗' },
+  { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 
 export function AppLayout() {

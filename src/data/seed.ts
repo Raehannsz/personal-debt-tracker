@@ -1,9 +1,10 @@
-import { db, genId, nowISO } from '../lib/db';
+import { collection, doc, writeBatch, getDocs, query, limit } from 'firebase/firestore';
+import { db, genId, nowISO } from '../lib/firebase';
 import type { Person, Debt } from '../types';
 
 export async function isEmpty(): Promise<boolean> {
-  const count = await db.persons.count();
-  return count === 0;
+  const snap = await getDocs(query(collection(db, 'persons'), limit(1)));
+  return snap.empty;
 }
 
 export async function seedDemoData(): Promise<void> {
@@ -40,16 +41,20 @@ export async function seedDemoData(): Promise<void> {
     updatedAt: now,
   }));
 
-  await db.persons.bulkAdd(persons);
-  await db.debts.bulkAdd(debts);
-  await db.settings.put({ id: 'settings', myPersonId: andi.id, theme: 'light' });
+  const batch = writeBatch(db);
+  persons.forEach((p) => batch.set(doc(db, 'persons', p.id), p));
+  debts.forEach((d) => batch.set(doc(db, 'debts', d.id), d));
+  batch.set(doc(db, 'meta', 'settings'), { id: 'settings', myPersonId: andi.id, theme: 'light' });
+  await batch.commit();
+}
+
+async function clearCollection(name: string): Promise<void> {
+  const snap = await getDocs(collection(db, name));
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
 }
 
 export async function clearDemoData(): Promise<void> {
-  await db.transaction('rw', db.persons, db.debts, db.payments, db.settings, async () => {
-    await db.persons.clear();
-    await db.debts.clear();
-    await db.payments.clear();
-    await db.settings.clear();
-  });
+  await Promise.all([clearCollection('persons'), clearCollection('debts'), clearCollection('payments')]);
 }

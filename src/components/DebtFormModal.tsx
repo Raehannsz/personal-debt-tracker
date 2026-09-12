@@ -26,6 +26,7 @@ export function DebtFormModal({
   const [dueDate, setDueDate] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -45,12 +46,14 @@ export function DebtFormModal({
       setDescription('');
     }
     setError('');
+    setSubmitting(false);
   }, [open, editingDebt, defaultDebtorId]);
 
   const amount = parseCurrencyInput(amountStr);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
     if (!debtorId) return setError('Debtor wajib dipilih.');
     if (!creditorId) return setError('Creditor wajib dipilih.');
     if (debtorId === creditorId) return setError('Debtor tidak boleh sama dengan creditor.');
@@ -65,14 +68,24 @@ export function DebtFormModal({
       dueDate: dueDate ? fromDateInputValue(dueDate) : null,
     };
 
-    if (editingDebt) {
-      await updateDebt(editingDebt.id, payload);
-      showToast('✓ Hutang berhasil diperbarui');
-    } else {
-      await createDebt(payload);
-      showToast('✓ Hutang berhasil ditambahkan');
+    setError('');
+    setSubmitting(true);
+    try {
+      if (editingDebt) {
+        await updateDebt(editingDebt.id, payload);
+        showToast('✓ Hutang berhasil diperbarui');
+      } else {
+        await createDebt(payload);
+        showToast('✓ Hutang berhasil ditambahkan');
+      }
+      onClose();
+    } catch (err) {
+      console.error('Gagal menyimpan hutang:', err);
+      setError('Gagal menyimpan. Cek koneksi internet, atau coba lagi.');
+      showToast('✗ Gagal menyimpan, coba lagi');
+    } finally {
+      setSubmitting(false);
     }
-    onClose();
   }
 
   return (
@@ -123,9 +136,11 @@ export function DebtFormModal({
           <Label>Keterangan</Label>
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button type="submit" className="w-full">
-          Simpan
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
+        )}
+        <Button type="submit" className="w-full" disabled={submitting}>
+          {submitting ? 'Menyimpan...' : 'Simpan'}
         </Button>
       </form>
     </Modal>

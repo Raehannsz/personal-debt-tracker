@@ -37,8 +37,13 @@ export function Persons() {
       danger: true,
     });
     if (!ok) return;
-    await deletePerson(p.id);
-    showToast('✓ Orang berhasil dihapus');
+    try {
+      await deletePerson(p.id);
+      showToast('✓ Orang berhasil dihapus');
+    } catch (err) {
+      console.error('Gagal menghapus orang:', err);
+      showToast('✗ Gagal menghapus, coba lagi');
+    }
   }
 
   return (

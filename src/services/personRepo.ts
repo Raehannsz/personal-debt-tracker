@@ -1,14 +1,10 @@
-import { db, genId, nowISO } from '../lib/db';
+import { collection, doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { db, genId, nowISO } from '../lib/firebase';
 import type { Person } from '../types';
 
-export async function listPersons(includeDeleted = false): Promise<Person[]> {
-  const all = await db.persons.toArray();
-  const filtered = includeDeleted ? all : all.filter((p) => !p.deletedAt);
-  return filtered.sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export async function getPerson(id: string): Promise<Person | undefined> {
-  return db.persons.get(id);
+  const snap = await getDoc(doc(db, 'persons', id));
+  return snap.exists() ? (snap.data() as Person) : undefined;
 }
 
 export async function createPerson(input: {
@@ -28,7 +24,8 @@ export async function createPerson(input: {
     createdAt: now,
     updatedAt: now,
   };
-  await db.persons.add(person);
+  // Document id sengaja disamakan dengan person.id supaya gampang direferensikan dari debts/payments.
+  await setDoc(doc(db, 'persons', person.id), person);
   return person;
 }
 
@@ -36,28 +33,30 @@ export async function updatePerson(
   id: string,
   input: { name: string; phone?: string; email?: string; notes?: string }
 ): Promise<void> {
-  await db.persons.update(id, {
+  await updateDoc(doc(db, 'persons', id), {
     name: input.name.trim(),
-    phone: input.phone?.trim() || undefined,
-    email: input.email?.trim() || undefined,
-    notes: input.notes?.trim() || undefined,
+    phone: input.phone?.trim() || null,
+    email: input.email?.trim() || null,
+    notes: input.notes?.trim() || null,
     updatedAt: nowISO(),
   });
 }
 
 export async function personHasActiveDebts(id: string): Promise<boolean> {
-  const debts = await db.debts
-    .filter((d) => (d.debtorId === id || d.creditorId === id) && d.status !== 'CANCELLED')
-    .toArray();
-  return debts.length > 0;
+  const debtsCol = collection(db, 'debts');
+  const [asDebtor, asCreditor] = await Promise.all([
+    getDocs(query(debtsCol, where('debtorId', '==', id))),
+    getDocs(query(debtsCol, where('creditorId', '==', id))),
+  ]);
+  const all = [...asDebtor.docs, ...asCreditor.docs];
+  return all.some((d) => d.data().status !== 'CANCELLED');
 }
 
-/** Soft delete jika masih punya transaksi; hard delete jika bersih. Return true jika berhasil dihapus permanen. */
 export async function deletePerson(id: string): Promise<void> {
   const hasDebts = await personHasActiveDebts(id);
   if (hasDebts) {
-    await db.persons.update(id, { deletedAt: nowISO(), updatedAt: nowISO() });
+    await updateDoc(doc(db, 'persons', id), { deletedAt: nowISO(), updatedAt: nowISO() });
   } else {
-    await db.persons.delete(id);
+    await deleteDoc(doc(db, 'persons', id));
   }
 }
