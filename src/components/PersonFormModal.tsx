@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { Button, Input, Label, Textarea } from './ui';
 import { createPerson, updatePerson } from '../services/personRepo';
 import { showToast } from '../stores/toastStore';
+import { getErrorMessage } from '../lib/supabase';
 import type { Person } from '../types';
 
 export function PersonFormModal({
@@ -49,7 +50,7 @@ export function PersonFormModal({
       onClose();
     } catch (err) {
       console.error('Gagal menyimpan orang:', err);
-      setError('Gagal menyimpan. Cek koneksi internet, atau coba lagi.');
+      setError(`Gagal menyimpan: ${getErrorMessage(err)}`);
       showToast('✗ Gagal menyimpan, coba lagi');
     } finally {
       setSubmitting(false);

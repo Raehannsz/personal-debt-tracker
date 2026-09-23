@@ -16,6 +16,9 @@ dist-ssr
 .env
 .env.*
 .env.example
+.agents
+.claude
+.windsurf
 
 # Editor directories and files
 .vscode/*
@@ -27,3 +30,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+/src/generated/prisma

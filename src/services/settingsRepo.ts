@@ -1,91 +1,11 @@
-import { collection, doc, getDoc, setDoc, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import type { Settings, BackupData } from '../types';
 
-const DEFAULT_SETTINGS: Settings = {
-  id: 'settings',
-  myPersonId: null,
-  theme: 'light',
-};
-
-const settingsRef = doc(db, 'meta', 'settings');
-
-export async function getSettings(): Promise<Settings> {
-  const snap = await getDoc(settingsRef);
-  return snap.exists() ? (snap.data() as Settings) : DEFAULT_SETTINGS;
-}
-
-export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
-  const current = await getSettings();
-  const updated = { ...current, ...patch, id: 'settings' as const };
-  await setDoc(settingsRef, updated);
-  return updated;
-}
-
-export async function exportData(): Promise<BackupData> {
-  const [personsSnap, debtsSnap, paymentsSnap, settings] = await Promise.all([
-    getDocs(collection(db, 'persons')),
-    getDocs(collection(db, 'debts')),
-    getDocs(collection(db, 'payments')),
-    getSettings(),
-  ]);
-  return {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    persons: personsSnap.docs.map((d) => d.data()) as BackupData['persons'],
-    debts: debtsSnap.docs.map((d) => d.data()) as BackupData['debts'],
-    payments: paymentsSnap.docs.map((d) => d.data()) as BackupData['payments'],
-    settings,
-  };
-}
-
-export function downloadBackup(data: BackupData): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'debt-tracker-backup.json';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-export function validateBackup(data: unknown): data is BackupData {
-  if (!data || typeof data !== 'object') return false;
-  const d = data as Record<string, unknown>;
-  return (
-    Array.isArray(d.persons) &&
-    Array.isArray(d.debts) &&
-    Array.isArray(d.payments) &&
-    typeof d.settings === 'object' &&
-    d.settings !== null
-  );
-}
-
-async function clearCollection(name: string): Promise<void> {
-  const snap = await getDocs(collection(db, name));
-  const batch = writeBatch(db);
-  snap.docs.forEach((d) => batch.delete(d.ref));
-  await batch.commit();
-}
-
-export async function importData(data: BackupData): Promise<void> {
-  await Promise.all([clearCollection('persons'), clearCollection('debts'), clearCollection('payments')]);
-
-  const batch = writeBatch(db);
-  data.persons.forEach((p) => batch.set(doc(db, 'persons', p.id), p));
-  data.debts.forEach((d) => batch.set(doc(db, 'debts', d.id), d));
-  data.payments.forEach((p) => batch.set(doc(db, 'payments', p.id), p));
-  batch.set(settingsRef, { ...data.settings, id: 'settings' });
-  await batch.commit();
-}
-
-export async function resetAllData(): Promise<void> {
-  await Promise.all([
-    clearCollection('persons'),
-    clearCollection('debts'),
-    clearCollection('payments'),
-    deleteDoc(settingsRef),
-  ]);
-}
+const DEFAULT_SETTINGS: Settings = { id: 'settings', myPersonId: null, theme: 'light' };
+export async function getSettings(): Promise<Settings> { const { data, error } = await supabase.from('app_settings').select('*').eq('id', 'settings').maybeSingle(); if (error) throw error; return (data as Settings | null) ?? DEFAULT_SETTINGS; }
+export async function updateSettings(patch: Partial<Settings>): Promise<Settings> { const updated = { ...(await getSettings()), ...patch, id: 'settings' as const }; const { error } = await supabase.from('app_settings').upsert(updated); if (error) throw error; return updated; }
+export async function exportData(): Promise<BackupData> { const [persons, debts, payments, settings] = await Promise.all([supabase.from('persons').select('*'), supabase.from('debts').select('*'), supabase.from('payments').select('*'), getSettings()]); for (const result of [persons, debts, payments]) if (result.error) throw result.error; return { version: 1, exportedAt: new Date().toISOString(), persons: (persons.data ?? []) as BackupData['persons'], debts: (debts.data ?? []) as BackupData['debts'], payments: (payments.data ?? []) as BackupData['payments'], settings }; }
+export function downloadBackup(data: BackupData): void { const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'debt-tracker-backup.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+export function validateBackup(data: unknown): data is BackupData { if (!data || typeof data !== 'object') return false; const d = data as Record<string, unknown>; return Array.isArray(d.persons) && Array.isArray(d.debts) && Array.isArray(d.payments) && typeof d.settings === 'object' && d.settings !== null; }
+export async function importData(data: BackupData): Promise<void> { await resetAllData(); const people = await supabase.from('persons').insert(data.persons); if (people.error) throw people.error; const debts = await supabase.from('debts').insert(data.debts); if (debts.error) throw debts.error; const payments = await supabase.from('payments').insert(data.payments); if (payments.error) throw payments.error; const settings = await supabase.from('app_settings').upsert({ ...data.settings, id: 'settings' }); if (settings.error) throw settings.error; }
+export async function resetAllData(): Promise<void> { const [payments, debts, persons] = await Promise.all([supabase.from('payments').delete().neq('id', ''), supabase.from('debts').delete().neq('id', ''), supabase.from('persons').delete().neq('id', '')]); for (const result of [payments, debts, persons]) if (result.error) throw result.error; const settings = await supabase.from('app_settings').delete().eq('id', 'settings'); if (settings.error) throw settings.error; }

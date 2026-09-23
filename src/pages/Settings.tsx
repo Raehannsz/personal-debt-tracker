@@ -185,7 +185,7 @@ export function Settings() {
         </Button>
       </Card>
 
-      <p className="text-center text-xs text-slate-400 pt-2">Personal Debt Tracker · Data sinkron real-time via Firebase</p>
+      <p className="text-center text-xs text-slate-400 pt-2">Personal Debt Tracker · Data sinkron real-time via Supabase</p>
     </div>
   );
 }

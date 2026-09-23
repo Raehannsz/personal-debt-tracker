@@ -4,6 +4,7 @@ import { Button, Input, Label, Textarea } from './ui';
 import { addPayment } from '../services/debtRepo';
 import { formatCurrency, parseCurrencyInput, toDateInputValue, fromDateInputValue } from '../utils/format';
 import { showToast } from '../stores/toastStore';
+import { getErrorMessage } from '../lib/supabase';
 
 export function PaymentFormModal({
   open,
@@ -59,7 +60,7 @@ export function PaymentFormModal({
       onClose();
     } catch (err) {
       console.error('Gagal mencatat pembayaran:', err);
-      setError('Gagal menyimpan pembayaran. Coba lagi — kalau terus terjadi, muat ulang halaman.');
+      setError(`Gagal menyimpan pembayaran: ${getErrorMessage(err)}`);
       showToast('✗ Pembayaran gagal disimpan');
     } finally {
       setSubmitting(false);

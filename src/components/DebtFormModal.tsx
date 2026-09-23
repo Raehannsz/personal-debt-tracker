@@ -6,6 +6,7 @@ import { createDebt, updateDebt } from '../services/debtRepo';
 import { formatCurrency, parseCurrencyInput, toDateInputValue, fromDateInputValue } from '../utils/format';
 import { showToast } from '../stores/toastStore';
 import type { Debt } from '../types';
+import { getErrorMessage } from '../lib/supabase';
 
 export function DebtFormModal({
   open,
@@ -81,7 +82,7 @@ export function DebtFormModal({
       onClose();
     } catch (err) {
       console.error('Gagal menyimpan hutang:', err);
-      setError('Gagal menyimpan. Cek koneksi internet, atau coba lagi.');
+      setError(`Gagal menyimpan: ${getErrorMessage(err)}`);
       showToast('✗ Gagal menyimpan, coba lagi');
     } finally {
       setSubmitting(false);

@@ -11,11 +11,11 @@ Aplikasi web pribadi untuk mencatat dan mengelola hutang/piutang antar orang. Si
 - **Manajemen Hutang** — catat hutang antar siapa saja (mendukung rantai dan relasi banyak-ke-banyak, termasuk siklus), edit, batalkan, atau hapus.
 - **Pembayaran Bertahap** — setiap hutang bisa dibayar beberapa kali, status otomatis berubah `ACTIVE → PARTIAL → PAID` (disimpan dalam satu transaksi atomik, jadi tidak akan ada status yang "nyangkut"). Histori pembayaran tidak pernah dihapus.
 - **Netting/Kliring Otomatis** — kalau dua orang saling berhutang, otomatis dihitung selisihnya (net) di Dashboard, halaman Hutang, halaman Orang, dan visualisasi Jaringan.
-- **Sinkron Real-Time Antar Perangkat** — data tersimpan di Firebase Firestore (cloud), jadi update di desktop langsung muncul di mobile (dan sebaliknya) tanpa perlu export/import manual.
+- **Sinkron Real-Time Antar Perangkat** — data tersimpan di Supabase (cloud), jadi update di desktop langsung muncul di mobile (dan sebaliknya) tanpa perlu export/import manual.
 - **Jaringan Hutang** — visualisasi sederhana (SVG, node & edge) untuk melihat siapa berhutang ke siapa.
 - **Filter, Pencarian & Sort** — filter hutang (semua/hutang saya/piutang saya/belum lunas/lunas), pencarian berdasarkan nama, dan urutkan berdasarkan tanggal/nominal (ascending/descending).
 - **Export / Import** — backup seluruh data ke file JSON dan restore kapan saja. Aksi destruktif (reset/hapus semua) otomatis membuat backup dulu sebagai jaring pengaman.
-- **PWA** — bisa di-install ke home screen (Android/iOS/Desktop) dan tetap bisa dibuka secara offline (Firestore otomatis sinkron lagi begitu online).
+- **PWA** — bisa di-install ke home screen (Android/iOS/Desktop) dan tetap bisa dibuka saat koneksi tidak stabil.
 - **Mobile First** — bottom navigation di mobile, sidebar di desktop, dioptimalkan untuk layar 360px ke atas.
 
 ## Tech Stack
@@ -23,11 +23,11 @@ Aplikasi web pribadi untuk mencatat dan mengelola hutang/piutang antar orang. Si
 - [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
 - [Vite](https://vitejs.dev/) — build tool
 - [Tailwind CSS v4](https://tailwindcss.com/) — styling
-- [Firebase](https://firebase.google.com/) — **Firestore** (database cloud real-time) + **Authentication** (anonymous, tanpa perlu akun/password) untuk sinkron data antar perangkat
+- [Supabase](https://supabase.com/) — **Postgres** (database cloud real-time) + **Anonymous Authentication** untuk sinkron data antar perangkat
 - [React Router](https://reactrouter.com/) (`HashRouter`, aman untuk static hosting tanpa konfigurasi rewrite)
 - [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) — manifest & service worker
 
-Front-end sepenuhnya static (bisa di-host di GitHub Pages/Vercel/Netlify), datanya disimpan di Firebase — tidak perlu server/backend custom.
+Front-end sepenuhnya static (bisa di-host di GitHub Pages/Vercel/Netlify), datanya disimpan di Supabase — tidak perlu server/backend custom.
 
 ## Struktur Project
 
@@ -36,9 +36,9 @@ src/
 ├── components/   # Komponen UI & form modal (reusable)
 ├── pages/        # Halaman: Dashboard, Debts, Persons, Network, Settings, dll
 ├── layouts/       # Layout utama (sidebar + bottom nav)
-├── hooks/        # Live-query hooks ke Firestore (onSnapshot, real-time)
+├── hooks/        # Live-query hooks ke Supabase Realtime
 ├── services/     # Business logic & repository (CRUD, kalkulasi hutang)
-├── lib/          # Setup Firebase (app, auth, firestore)
+├── lib/          # Setup Supabase client dan auth
 ├── types/        # TypeScript interfaces
 ├── utils/        # Helper (format currency, format tanggal/jam WIB)
 ├── stores/       # Toast & confirm dialog (state ringan, tanpa alert()/confirm())
@@ -46,38 +46,22 @@ src/
 └── App.tsx
 ```
 
-## Setup Firebase (wajib sebelum menjalankan)
+## Setup Supabase (wajib sebelum menjalankan)
 
-Aplikasi ini butuh project Firebase gratis untuk penyimpanan & sinkronisasi data.
+Aplikasi ini membutuhkan project Supabase gratis untuk penyimpanan dan sinkronisasi data.
 
-1. Buka [console.firebase.google.com](https://console.firebase.google.com) → **Add project** → beri nama bebas → Create.
-2. Di sidebar **Build → Firestore Database** → **Create database** → pilih lokasi server terdekat → mulai dengan **Start in test mode**.
-3. Di sidebar **Build → Authentication** → **Get started** → tab **Sign-in method** → aktifkan provider **Anonymous**.
-4. **Project settings** (ikon gerigi) → scroll ke **Your apps** → klik ikon web `</>` → daftarkan app → copy object `firebaseConfig` yang muncul.
-5. **Penting — perketat Firestore Rules** supaya tidak publik terbuka. Buka **Firestore Database → Rules**, ganti isinya jadi:
+1. Buka [supabase.com/dashboard](https://supabase.com/dashboard) → **New project**.
+2. Buka **SQL Editor**, salin dan jalankan seluruh isi [`supabase/schema.sql`](supabase/schema.sql). File ini membuat tabel, RLS, realtime, dan RPC pembayaran atomik.
+3. Buka **Authentication → Providers**, aktifkan provider **Anonymous Sign-In**.
+4. Buka **Project Settings → API**, salin **Project URL** dan **Publishable/anon key**.
+5. Copy `.env.example` menjadi `.env`, lalu isi:
    ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /{document=**} {
-         allow read, write: if request.auth != null;
-       }
-     }
-   }
+   VITE_SUPABASE_URL=https://project-ref.supabase.co
+   VITE_SUPABASE_ANON_KEY=...
    ```
-   Ini membatasi akses hanya untuk pengguna yang sudah login (termasuk anonim) — jadi tidak sembarang orang bisa baca/tulis data walau tahu API key-nya.
-6. Copy `.env.example` jadi `.env`, lalu isi dengan nilai dari `firebaseConfig` di langkah 4:
-   ```
-   VITE_FIREBASE_API_KEY=...
-   VITE_FIREBASE_AUTH_DOMAIN=...
-   VITE_FIREBASE_PROJECT_ID=...
-   VITE_FIREBASE_STORAGE_BUCKET=...
-   VITE_FIREBASE_MESSAGING_SENDER_ID=...
-   VITE_FIREBASE_APP_ID=...
-   ```
-   File `.env` sudah otomatis di-gitignore, tidak akan ke-commit ke GitHub.
+   File `.env` sudah otomatis di-gitignore, tidak akan di-commit ke GitHub.
 
-> Catatan: API key Firebase untuk web app memang didesain untuk berada di sisi client (bukan rahasia seperti API key server) — keamanan sebenarnya diatur lewat Firestore Rules di langkah 5, bukan dengan menyembunyikan key ini.
+> Catatan: gunakan publishable/anon key di frontend. Keamanan data diatur oleh RLS pada `supabase/schema.sql`; jangan pernah memasukkan `service_role` key ke aplikasi web.
 
 ## Cara Menjalankan (Development)
 
@@ -94,7 +78,7 @@ Buka `http://localhost:5173`.
 npm run build
 ```
 
-Hasil build ada di folder `dist/`. Config Firebase dari `.env` otomatis ikut ter-build ke dalamnya — pastikan `.env` sudah terisi sebelum build untuk deploy.
+Hasil build ada di folder `dist/`. Config Supabase dari `.env` otomatis ikut ter-build ke dalamnya — pastikan `.env` sudah terisi sebelum build untuk deploy.
 
 Untuk preview hasil build secara lokal:
 
@@ -111,7 +95,7 @@ Karena tidak butuh backend, aplikasi ini bisa dideploy ke static hosting mana pu
 1. Push project ke GitHub.
 2. Import repo di [Vercel](https://vercel.com/) atau [Netlify](https://netlify.com/).
 3. Build command: `npm run build`, Output directory: `dist`.
-4. **Tambahkan environment variables** di dashboard project (Settings → Environment Variables) — isi semua `VITE_FIREBASE_*` sesuai `.env` kamu, karena build berjalan di server mereka, bukan di komputer kamu.
+4. **Tambahkan environment variables** di dashboard project (Settings → Environment Variables) — isi `VITE_SUPABASE_URL` dan `VITE_SUPABASE_ANON_KEY` sesuai `.env` kamu, karena build berjalan di server mereka, bukan di komputer kamu.
 5. Deploy — selesai.
 
 ### GitHub Pages
@@ -130,7 +114,7 @@ Karena tidak butuh backend, aplikasi ini bisa dideploy ke static hosting mana pu
 
 ## Cara Backup / Restore Data
 
-Karena data tersimpan di cloud (Firestore) dan otomatis sinkron antar perangkat, risiko kehilangan data jauh lebih kecil dibanding penyimpanan lokal. Tapi tetap disarankan backup berkala, terutama sebelum melakukan aksi besar:
+Karena data tersimpan di cloud (Supabase) dan otomatis sinkron antar perangkat, risiko kehilangan data jauh lebih kecil dibanding penyimpanan lokal. Tapi tetap disarankan backup berkala, terutama sebelum melakukan aksi besar:
 
 1. Buka halaman **Settings**.
 2. Klik **Export Data** → file `debt-tracker-backup.json` akan terunduh (berisi semua data orang, hutang, pembayaran, dan pengaturan).

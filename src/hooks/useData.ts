@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import type { Person, Debt, Payment, Settings } from '../types';
 
-function useCollectionData<T>(name: string): T[] {
+function useCollectionData<T>(table: 'persons' | 'debts' | 'payments'): T[] {
   const [data, setData] = useState<T[]>([]);
   useEffect(() => {
-    const unsub = onSnapshot(
-      collection(db, name),
-      (snap) => setData(snap.docs.map((d) => d.data() as T)),
-      (err) => console.error(`Gagal memuat ${name}:`, err)
-    );
-    return unsub;
-  }, [name]);
+    let active = true;
+    const load = async () => {
+      const { data: rows, error } = await supabase.from(table).select('*');
+      if (error) { console.error(`Gagal memuat ${table}:`, error); return; }
+      if (active) setData((rows ?? []) as T[]);
+    };
+    void load();
+    const channel = supabase.channel(`${table}-changes-${crypto.randomUUID()}`).on('postgres_changes', { event: '*', schema: 'public', table }, () => void load()).subscribe();
+    return () => { active = false; void supabase.removeChannel(channel); };
+  }, [table]);
   return data;
 }
 
@@ -21,67 +23,35 @@ export function usePersons(includeDeleted = false): Person[] {
   const filtered = includeDeleted ? persons : persons.filter((p) => !p.deletedAt);
   return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
 }
-
 export function useDebts(): Debt[] {
   const debts = useCollectionData<Debt>('debts');
-  return [...debts].sort(
-    (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
-  );
+  return [...debts].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
 }
-
-export function usePayments(): Payment[] {
-  return useCollectionData<Payment>('payments');
-}
+export function usePayments(): Payment[] { return useCollectionData<Payment>('payments'); }
 
 export function useSettings(): Settings {
   const [settings, setSettings] = useState<Settings>({ id: 'settings', myPersonId: null, theme: 'light' });
   useEffect(() => {
-    const unsub = onSnapshot(
-      doc(db, 'meta', 'settings'),
-      (snap) => {
-        if (snap.exists()) setSettings(snap.data() as Settings);
-      },
-      (err) => console.error('Gagal memuat settings:', err)
-    );
-    return unsub;
+    let active = true;
+    const load = async () => {
+      const { data, error } = await supabase.from('app_settings').select('*').eq('id', 'settings').maybeSingle();
+      if (error) { console.error('Gagal memuat settings:', error); return; }
+      if (active && data) setSettings(data as Settings);
+    };
+    void load();
+    const channel = supabase.channel(`settings-changes-${crypto.randomUUID()}`).on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => void load()).subscribe();
+    return () => { active = false; void supabase.removeChannel(channel); };
   }, []);
   return settings;
 }
-
 export function usePerson(id: string | undefined): Person | undefined {
-  const [person, setPerson] = useState<Person | undefined>(undefined);
-  useEffect(() => {
-    if (!id) {
-      setPerson(undefined);
-      return;
-    }
-    const unsub = onSnapshot(
-      doc(db, 'persons', id),
-      (snap) => setPerson(snap.exists() ? (snap.data() as Person) : undefined),
-      (err) => console.error('Gagal memuat person:', err)
-    );
-    return unsub;
-  }, [id]);
-  return person;
+  const persons = useCollectionData<Person>('persons');
+  return id ? persons.find((person) => person.id === id) : undefined;
 }
-
 export function useDebt(id: string | undefined): Debt | undefined {
-  const [debt, setDebt] = useState<Debt | undefined>(undefined);
-  useEffect(() => {
-    if (!id) {
-      setDebt(undefined);
-      return;
-    }
-    const unsub = onSnapshot(
-      doc(db, 'debts', id),
-      (snap) => setDebt(snap.exists() ? (snap.data() as Debt) : undefined),
-      (err) => console.error('Gagal memuat debt:', err)
-    );
-    return unsub;
-  }, [id]);
-  return debt;
+  const debts = useCollectionData<Debt>('debts');
+  return id ? debts.find((debt) => debt.id === id) : undefined;
 }
-
 export function usePaymentsForDebt(debtId: string | undefined): Payment[] {
   const allPayments = usePayments();
   const payments = debtId ? allPayments.filter((p) => p.debtId === debtId) : [];
