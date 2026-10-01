@@ -28,6 +28,9 @@ export function DebtDetail() {
   const creditor = persons.find((p) => p.id === debt.creditorId);
   const paid = getTotalPaid(debt.id, payments);
   const remaining = getRemainingDebt(debt, payments);
+  const isPaid = debt.status === 'PAID';
+  // payments sudah diurutkan terbaru dulu — ambil catatan dari pembayaran paling baru.
+  const latestNote = payments.find((p) => p.notes)?.notes;
 
   async function handleDelete() {
     const ok = await confirmDialog({
@@ -72,19 +75,28 @@ export function DebtDetail() {
           <span className="text-slate-400">↓</span>
         </div>
         <p className="font-semibold text-slate-800 mb-3">{creditor?.name ?? '—'}</p>
-        <p className="text-3xl font-bold text-slate-900">{formatCurrency(debt.amount)}</p>
-        <div className="mt-2 flex justify-center">
+        <p className={`text-3xl font-bold ${isPaid ? 'text-slate-400' : 'text-slate-900'}`}>
+          {formatCurrency(debt.amount)}
+        </p>
+        <div className="mt-2 flex justify-center items-center gap-2">
           <Badge color={statusColor(debt.status)}>{statusLabel(debt.status)}</Badge>
+          {isPaid && <span className="text-xs text-slate-400">✓ Lunas</span>}
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-5 text-left">
           <div className="bg-slate-50 rounded-xl p-3">
             <p className="text-xs text-slate-500">Sudah dibayar</p>
-            <p className="font-semibold text-emerald-600">{formatCurrency(paid)}</p>
+            <p className={`font-semibold ${isPaid ? 'text-slate-500' : 'text-emerald-600'}`}>
+              {formatCurrency(paid)}
+            </p>
           </div>
           <div className="bg-slate-50 rounded-xl p-3">
             <p className="text-xs text-slate-500">Sisa</p>
-            <p className="font-semibold text-red-600">{formatCurrency(remaining)}</p>
+            {isPaid ? (
+              <p className="font-semibold text-slate-500">Lunas</p>
+            ) : (
+              <p className="font-semibold text-red-600">{formatCurrency(remaining)}</p>
+            )}
           </div>
         </div>
 
@@ -105,6 +117,12 @@ export function DebtDetail() {
             <div className="pt-2 border-t border-slate-100 mt-2">
               <p className="text-slate-500 mb-0.5">Keterangan</p>
               <p className="text-slate-800">{debt.description}</p>
+            </div>
+          )}
+          {latestNote && (
+            <div className="pt-2 border-t border-slate-100 mt-2">
+              <p className="text-slate-500 mb-0.5">Catatan Pembayaran</p>
+              <p className="text-slate-800">{latestNote}</p>
             </div>
           )}
         </div>
