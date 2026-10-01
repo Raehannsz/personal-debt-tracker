@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, formatTime } from '../utils/format';
 import { Card, Badge, Button, Input, EmptyState } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { DebtFormModal } from '../components/DebtFormModal';
+import type { Payment } from '../types';
 
 type FilterKey = 'ALL' | 'MY_DEBT' | 'MY_RECEIVABLE' | 'UNPAID' | 'PAID';
 type SortField = 'date' | 'amount';
@@ -23,6 +24,12 @@ const SORT_FIELDS: { key: SortField; label: string }[] = [
   { key: 'date', label: 'Tanggal' },
   { key: 'amount', label: 'Nominal' },
 ];
+
+function getLatestNote(debtId: string, payments: Payment[]): string | undefined {
+  return payments
+    .filter((p) => p.debtId === debtId && p.notes)
+    .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0]?.notes;
+}
 
 export function Debts() {
   const debts = useDebts();
@@ -171,6 +178,8 @@ export function Debts() {
         <div className="space-y-2">
           {filtered.map((d) => {
             const remaining = getRemainingDebt(d, payments);
+            const isPaid = d.status === 'PAID';
+            const note = getLatestNote(d.id, payments);
             return (
               <Link key={d.id} to={`/hutang/${d.id}`}>
                 <Card className="p-3.5 hover:border-indigo-200 transition">
@@ -180,17 +189,30 @@ export function Debts() {
                     </p>
                     <Badge color={statusColor(d.status)}>{statusLabel(d.status)}</Badge>
                   </div>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <p className="text-xs text-slate-500">
-                      {formatDate(d.transactionDate, true)} · {formatTime(d.createdAt)}
-                    </p>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-slate-800">{formatCurrency(remaining)}</p>
-                      {remaining !== d.amount && remaining > 0 && (
-                        <p className="text-[11px] text-slate-400">dari {formatCurrency(d.amount)}</p>
+                  <div className="flex items-center justify-between mt-1.5 gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <p className="text-xs text-slate-500 shrink-0">
+                        {formatDate(d.transactionDate, true)} · {formatTime(d.createdAt)}
+                      </p>
+                      {d.description && (
+                        <>
+                          <span className="text-xs text-slate-300 shrink-0">·</span>
+                          <p className="text-xs text-slate-500 truncate">{d.description}</p>
+                        </>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-semibold ${isPaid ? 'text-slate-400' : 'text-slate-800'}`}>
+                        {formatCurrency(d.amount)}
+                      </p>
+                      {isPaid ? (
+                        <p className="text-[11px] text-slate-400">Lunas</p>
+                      ) : (
+                        remaining !== d.amount && <p className="text-[11px] text-slate-400">sisa {formatCurrency(remaining)}</p>
                       )}
                     </div>
                   </div>
+                  {note && <p className="text-[11px] text-slate-400 mt-1 italic truncate">"{note}"</p>}
                 </Card>
               </Link>
             );
