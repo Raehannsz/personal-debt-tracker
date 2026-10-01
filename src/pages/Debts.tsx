@@ -9,7 +9,7 @@ import { DebtFormModal } from '../components/DebtFormModal';
 import type { Payment } from '../types';
 
 type FilterKey = 'ALL' | 'MY_DEBT' | 'MY_RECEIVABLE' | 'UNPAID' | 'PAID';
-type SortField = 'date' | 'amount';
+type SortField = 'newest' | 'oldest' | 'amount';
 type SortDir = 'asc' | 'desc';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -21,7 +21,8 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 ];
 
 const SORT_FIELDS: { key: SortField; label: string }[] = [
-  { key: 'date', label: 'Tanggal' },
+  { key: 'newest', label: 'Terbaru' },
+  { key: 'oldest', label: 'Terlama' },
   { key: 'amount', label: 'Nominal' },
 ];
 
@@ -39,7 +40,7 @@ export function Debts() {
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortField, setSortField] = useState<SortField>('newest');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
@@ -65,7 +66,11 @@ export function Debts() {
       if (sortField === 'amount') {
         return (getRemainingDebt(a, payments) - getRemainingDebt(b, payments)) * dir;
       }
-      return (new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime()) * dir;
+      
+      // Gunakan createdAt agar sorting mencakup tanggal DAN jam pencatatan
+      const timeA = new Date(a.createdAt).getTime();
+      const timeB = new Date(b.createdAt).getTime();
+      return (timeA - timeB) * dir;
     });
 
     return list;
@@ -131,30 +136,37 @@ export function Debts() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 shrink-0">Urutkan:</span>
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-              {SORT_FIELDS.map((f) => (
-                <button
-                  key={f.key}
-                  onClick={() => setSortField(f.key)}
-                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition ${
-                    sortField === f.key
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-slate-200 text-slate-600'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+          <span className="text-xs text-slate-500 shrink-0">Urutkan:</span>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {SORT_FIELDS.map((f) => (
               <button
-                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                className="shrink-0 flex items-center gap-1 rounded-full px-3.5 py-1.5 text-xs font-medium border bg-white border-slate-200 text-slate-600"
-                title={sortDir === 'asc' ? 'Ascending (kecil → besar)' : 'Descending (besar → kecil)'}
+                key={f.key}
+                onClick={() => {
+                  setSortField(f.key);
+                  // Otomatis atur arah saat memilih Terbaru/Terlama
+                  if (f.key === 'newest') setSortDir('desc');
+                  if (f.key === 'oldest') setSortDir('asc');
+                }}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium border transition ${
+                  sortField === f.key
+                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    : 'bg-white border-slate-200 text-slate-600'
+                }`}
               >
-                {sortDir === 'asc' ? '↑ Ascending' : '↓ Descending'}
+                {f.label}
               </button>
-            </div>
+            ))}
+            
+            {/* Tombol arah tetap ada untuk mengurutkan Nominal */}
+            <button
+              onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+              className="shrink-0 flex items-center gap-1 rounded-full px-3.5 py-1.5 text-xs font-medium border bg-white border-slate-200 text-slate-600"
+              title={sortDir === 'asc' ? 'Ascending (kecil → besar)' : 'Descending (besar → kecil)'}
+            >
+              {sortDir === 'asc' ? '↑ Naik' : '↓ Turun'}
+            </button>
           </div>
+        </div>
         </>
       )}
 
