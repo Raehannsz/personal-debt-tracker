@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
 import { getRemainingDebt, getNetPairs } from '../services/debtLogic';
 import { formatCurrency, formatDate, formatTime } from '../utils/format';
-import { Card, Badge, Button, Input, EmptyState } from '../components/ui';
+import { Card, Badge, Button, Input, Select, EmptyState } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { DebtFormModal } from '../components/DebtFormModal';
 import type { Payment } from '../types';
@@ -38,6 +38,7 @@ export function Debts() {
   const persons = usePersons();
   const settings = useSettings();
   const [filter, setFilter] = useState<FilterKey>('ALL');
+  const [personFilter, setPersonFilter] = useState('');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [sortField, setSortField] = useState<SortField>('newest');
@@ -54,6 +55,10 @@ export function Debts() {
     if (filter === 'UNPAID') list = list.filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL');
     if (filter === 'PAID') list = list.filter((d) => d.status === 'PAID');
 
+    if (personFilter) {
+      list = list.filter((d) => d.debtorId === personFilter || d.creditorId === personFilter);
+    }
+
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -66,7 +71,7 @@ export function Debts() {
       if (sortField === 'amount') {
         return (getRemainingDebt(a, payments) - getRemainingDebt(b, payments)) * dir;
       }
-      
+
       // Gunakan createdAt agar sorting mencakup tanggal DAN jam pencatatan
       const timeA = new Date(a.createdAt).getTime();
       const timeB = new Date(b.createdAt).getTime();
@@ -74,7 +79,7 @@ export function Debts() {
     });
 
     return list;
-  }, [debts, filter, search, settings.myPersonId, persons, sortField, sortDir, payments]);
+  }, [debts, filter, personFilter, search, settings.myPersonId, persons, sortField, sortDir, payments]);
 
   const netPairs = useMemo(() => getNetPairs(debts, payments), [debts, payments]);
 
@@ -118,6 +123,17 @@ export function Debts() {
       {persons.length > 0 && (
         <>
           <Input placeholder="Cari nama..." value={search} onChange={(e) => setSearch(e.target.value)} />
+
+          <div>
+            <Select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}>
+              <option value="">Semua Orang</option>
+              {persons.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
             {FILTERS.map((f) => (
