@@ -46,6 +46,13 @@ export function Debts() {
 
   const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
 
+  // Dropdown cuma berisi orang yang SEDANG punya hutang aktif (sebagai yang berhutang/debtor).
+  // Orang yang cuma punya piutang (sebagai creditor), atau hutangnya sudah lunas/partial/dibatalkan, tidak dimasukkan.
+  const debtorOptions = useMemo(() => {
+    const activeDebtorIds = new Set(debts.filter((d) => d.status === 'ACTIVE').map((d) => d.debtorId));
+    return persons.filter((p) => activeDebtorIds.has(p.id));
+  }, [debts, persons]);
+
   const filtered = useMemo(() => {
     let list = debts.filter((d) => d.status !== 'CANCELLED');
     const me = settings.myPersonId;
@@ -56,7 +63,9 @@ export function Debts() {
     if (filter === 'PAID') list = list.filter((d) => d.status === 'PAID');
 
     if (personFilter) {
-      list = list.filter((d) => d.debtorId === personFilter || d.creditorId === personFilter);
+      // Hanya tampilkan hutang aktif di mana orang ini berperan sebagai yang BERHUTANG (debtor).
+      // Kalau dia punya piutang (berperan sebagai creditor) di transaksi lain, itu diabaikan di sini.
+      list = list.filter((d) => d.debtorId === personFilter && d.status === 'ACTIVE');
     }
 
     if (search.trim()) {
@@ -127,12 +136,17 @@ export function Debts() {
           <div>
             <Select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}>
               <option value="">Semua Orang</option>
-              {persons.map((p) => (
+              {debtorOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
             </Select>
+            {personFilter && (
+              <p className="text-[11px] text-slate-400 mt-1">
+                Menampilkan hutang aktif {personName(personFilter)} saja (piutangnya, kalau ada, tidak ikut ditampilkan).
+              </p>
+            )}
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
