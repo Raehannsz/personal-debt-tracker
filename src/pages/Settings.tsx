@@ -7,10 +7,31 @@ import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import { seedDemoData, clearDemoData, isEmpty } from '../data/seed';
 
+function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isDark}
+      onClick={onToggle}
+      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+        isDark ? 'bg-indigo-600' : 'bg-slate-300'
+      }`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+          isDark ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
+    </button>
+  );
+}
+
 export function Settings() {
   const persons = usePersons();
   const settings = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDark = settings.theme === 'dark';
 
   async function handleMyPersonChange(id: string) {
     try {
@@ -19,6 +40,17 @@ export function Settings() {
     } catch (err) {
       console.error('Gagal memperbarui profil:', err);
       showToast('✗ Gagal menyimpan, coba lagi');
+    }
+  }
+
+  async function handleThemeToggle() {
+    const next = isDark ? 'light' : 'dark';
+    try {
+      await updateSettings({ theme: next });
+      showToast(next === 'dark' ? '✓ Mode gelap diaktifkan' : '✓ Mode terang diaktifkan');
+    } catch (err) {
+      console.error('Gagal ganti tema:', err);
+      showToast('✗ Gagal menyimpan tema, coba lagi');
     }
   }
 
@@ -153,6 +185,17 @@ export function Settings() {
         <p className="text-xs text-slate-400 mt-2">
           Menentukan siapa "Saya" agar ringkasan hutang/piutang dihitung dari sudut pandangmu.
         </p>
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="font-medium text-slate-800 text-sm mb-3">Tampilan</h3>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-slate-700">Mode Gelap</p>
+            <p className="text-xs text-slate-400 mt-0.5">{isDark ? 'Aktif' : 'Nonaktif'}</p>
+          </div>
+          <ThemeToggle isDark={isDark} onToggle={handleThemeToggle} />
+        </div>
       </Card>
 
       <Card className="p-4 space-y-3">
