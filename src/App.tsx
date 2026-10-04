@@ -8,6 +8,7 @@ import { Persons } from './pages/Persons';
 import { PersonDetail } from './pages/PersonDetail';
 import { Network } from './pages/Network';
 import { Settings } from './pages/Settings';
+import { useThemeEffect } from './hooks/useTheme';
 
 function SupabaseSetupNotice() {
   return (
@@ -26,6 +27,7 @@ function SupabaseSetupNotice() {
 }
 
 export default function App() {
+  useThemeEffect();
   if (!supabaseConfigured) {
     return <SupabaseSetupNotice />;
   }
