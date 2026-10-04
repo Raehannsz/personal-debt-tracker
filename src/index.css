@@ -12,3 +12,64 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* ===== Dark mode ===== */
+.dark body {
+  background-color: #0f172a !important;
+  color-scheme: dark;
+}
+.dark .bg-white { background-color: #1e293b !important; }
+.dark .bg-slate-50 { background-color: #0f172a !important; }
+.dark .bg-slate-100 { background-color: #334155 !important; }
+.dark .bg-slate-200 { background-color: #475569 !important; }
+.dark .text-slate-900 { color: #f8fafc !important; }
+.dark .text-slate-800 { color: #f1f5f9 !important; }
+.dark .text-slate-700 { color: #e2e8f0 !important; }
+.dark .text-slate-600 { color: #cbd5e1 !important; }
+.dark .text-slate-500 { color: #94a3b8 !important; }
+.dark .text-slate-400 { color: #64748b !important; }
+.dark .border-slate-100 { border-color: #1e293b !important; }
+.dark .border-slate-200 { border-color: #334155 !important; }
+.dark .border-slate-300 { border-color: #475569 !important; }
+.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.15) !important; }
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.12) !important; }
+.dark .border-red-100 { border-color: rgba(239, 68, 68, 0.25) !important; }
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.12) !important; }
+.dark .border-emerald-300 { border-color: rgba(16, 185, 129, 0.4) !important; }
+
+body, .bg-white, .bg-slate-50 {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* ===== Dark mode: hover states ===== */
+.dark .hover\:bg-slate-100:hover { background-color: #334155 !important; }
+.dark .hover\:bg-slate-200:hover { background-color: #475569 !important; }
+.dark .hover\:bg-indigo-700:hover { background-color: #4338ca !important; }
+.dark .hover\:bg-red-700:hover { background-color: #b91c1c !important; }
+.dark .hover\:border-indigo-200:hover { border-color: #6366f1 !important; }
+
+/* ===== Dark mode: teks indigo (nav aktif, link, Ringkasan Net) ===== */
+.dark .text-indigo-700 { color: #a5b4fc !important; }
+.dark .text-indigo-600 { color: #a5b4fc !important; }
+
+/* ===== Dark mode: badge status (Aktif/Lunas/dll) ===== */
+.dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.2) !important; }
+.dark .text-red-700 { color: #fca5a5 !important; }
+.dark .text-red-600 { color: #fca5a5 !important; }
+.dark .bg-orange-100 { background-color: rgba(249, 115, 22, 0.2) !important; }
+.dark .text-orange-700 { color: #fdba74 !important; }
+.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.2) !important; }
+.dark .text-emerald-700 { color: #6ee7b7 !important; }
+.dark .text-emerald-600 { color: #6ee7b7 !important; }
+
+/* ===== Dark mode: input/select/textarea ===== */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
