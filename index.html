@@ -10,9 +10,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet">
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
     <title>Personal Debt Tracker</title>
-    <script type="module" crossorigin src="./assets/index-R6m1gzqP.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CTMxLLsO.css">
+    <script type="module" crossorigin src="./assets/index-dBhzeBx2.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BBsLxAQE.css">
   <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
   <body>
     <div id="root"></div>
