@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { ToastContainer, ConfirmDialogHost } from '../components/Feedback';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+
+import { 
+  faChartLine,     // Pengganti Dashboard (Grafik/Tren)
+  faMoneyBillWave, // Pengganti Hutang (Uang)
+  faUsers,         // Pengganti Orang (Grup Orang)
+  faNetworkWired,  // Pengganti Jaringan (Network)
+  faGear           // Pengganti Settings (Gir)
+} from '@fortawesome/free-solid-svg-icons';
 
 function useOnlineStatus() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -18,11 +27,11 @@ function useOnlineStatus() {
 }
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: '🏠', end: true },
-  { to: '/hutang', label: 'Hutang', icon: '💰' },
-  { to: '/orang', label: 'Orang', icon: '👥' },
-  { to: '/jaringan', label: 'Jaringan', icon: '🔗' },
-  { to: '/settings', label: 'Settings', icon: '⚙️' },
+  { to: '/', label: 'Dashboard', icon: faChartLine, end: true },
+  { to: '/hutang', label: 'Hutang', icon: faMoneyBillWave },
+  { to: '/orang', label: 'Orang', icon: faUsers },
+  { to: '/jaringan', label: 'Jaringan', icon: faNetworkWired },
+  { to: '/settings', label: 'Settings', icon: faGear },
 ];
 
 export function AppLayout() {
@@ -47,7 +56,8 @@ export function AppLayout() {
                 }`
               }
             >
-              <span>{item.icon}</span>
+              {/* DIUBAH DI SINI: Menggunakan FontAwesomeIcon untuk Desktop */}
+              <FontAwesomeIcon icon={item.icon} className="w-4 h-4" />
               {item.label}
             </NavLink>
           ))}
@@ -82,7 +92,8 @@ export function AppLayout() {
                 }`
               }
             >
-              <span className="text-lg leading-none">{item.icon}</span>
+              {/* DIUBAH DI SINI: Menggunakan FontAwesomeIcon untuk Mobile */}
+              <FontAwesomeIcon icon={item.icon} className="text-base" />
               {item.label}
             </NavLink>
           ))}
