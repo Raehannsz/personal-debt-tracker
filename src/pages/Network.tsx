@@ -125,7 +125,7 @@ export function Network() {
                 <text x={p.x} y={p.y + 5} textAnchor="middle" fontSize="12" fontWeight={700} fill="#4338ca">
                   {initials(name)}
                 </text>
-                <text x={p.x} y={p.y + nodeR + 15} textAnchor="middle" fontSize="11" fontWeight={500} fill="#334155">
+                <text x={p.x} y={p.y + nodeR + 15} textAnchor="middle" fontSize="11" fontWeight={500} fill="#96a6bd">
                   {name}
                 </text>
               </g>
