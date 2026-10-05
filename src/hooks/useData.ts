@@ -29,17 +29,19 @@ export function useDebts(): Debt[] {
 }
 export function usePayments(): Payment[] { return useCollectionData<Payment>('payments'); }
 
-export function useSettings(): Settings & { updateSettingsLocal: (s: Partial<Settings>) => void } {
+export function useSettings() {
+  // 1. Inisialisasi dari localStorage agar cocok dengan script di index.html (mencegah blink awal)
   const [settings, setSettings] = useState<Settings>(() => {
     let cachedTheme: Settings['theme'] = 'light';
     try {
       if (localStorage.getItem('theme') === 'dark') cachedTheme = 'dark';
     } catch {
-      // localStorage mungkin diblokir — tidak masalah, pakai default 'light'.
+      // Abaikan jika localStorage diblokir
     }
     return { id: 'settings', myPersonId: null, theme: cachedTheme };
   });
 
+  // 2. Flag untuk menandai bahwa perubahan ini berasal dari aksi lokal user
   const isLocalUpdate = useRef(false);
 
   useEffect(() => {
@@ -48,21 +50,34 @@ export function useSettings(): Settings & { updateSettingsLocal: (s: Partial<Set
     const load = async () => {
       const { data, error } = await supabase.from('app_settings').select('*').eq('id', 'settings').maybeSingle();
       if (error) { console.error('Gagal memuat settings:', error); return; }
-      if (active && data) setSettings(data as Settings);
+
+      if (active && data) {
+        // Hanya timpa state jika ini BUKAN update lokal
+        if (!isLocalUpdate.current) {
+          setSettings(data as Settings);
+        }
+        // Reset flag setelah dicek
+        isLocalUpdate.current = false;
+      }
     };
 
+    // Fetch awal saat mount
     void load();
 
+    // Realtime listener
     const channel = supabase.channel(`settings-changes-${crypto.randomUUID()}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'app_settings'
       }, () => {
+        // Jika ini bukan update lokal, baru kita fetch ulang (misal: diubah dari tab/browser lain)
         if (!isLocalUpdate.current) {
           void load();
+        } else {
+          // Jika ini update lokal, kita abaikan fetch-nya, tapi reset flag untuk perubahan berikutnya
+          isLocalUpdate.current = false;
         }
-        isLocalUpdate.current = false;
       })
       .subscribe();
 
@@ -72,12 +87,14 @@ export function useSettings(): Settings & { updateSettingsLocal: (s: Partial<Set
     };
   }, []);
 
+  // 3. Fungsi helper untuk update state lokal TANPA memicu re-fetch dari Supabase
   const updateSettingsLocal = useCallback((newSettings: Partial<Settings>) => {
-    isLocalUpdate.current = true;
+    isLocalUpdate.current = true; // Aktifkan penanda
     setSettings(prev => ({ ...prev, ...newSettings }));
   }, []);
 
-  return { ...settings, updateSettingsLocal };
+  // Kembalikan object settings beserta fungsi updatenya
+  return { ...settings, updateSettingsLocal } as Settings & { updateSettingsLocal: (s: Partial<Settings>) => void };
 }
 export function usePerson(id: string | undefined): Person | undefined {
   const persons = useCollectionData<Person>('persons');
