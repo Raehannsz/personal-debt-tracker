@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useMemo, memo } from 'react';
 import { usePersons, useSettings } from '../hooks/useData';
 import { updateSettings, exportData, downloadBackup, validateBackup, importData, resetAllData } from '../services/settingsRepo';
 import { deleteAllDebts } from '../services/debtRepo';
@@ -7,31 +7,37 @@ import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import { seedDemoData, clearDemoData, isEmpty } from '../data/seed';
 
-function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
+const ThemeToggle = memo(function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={isDark}
       onClick={onToggle}
-      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
-        isDark ? 'bg-indigo-600' : 'bg-slate-300'
-      }`}
+      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${isDark ? 'bg-indigo-600' : 'bg-slate-300'
+        }`}
     >
       <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-          isDark ? 'translate-x-6' : 'translate-x-1'
-        }`}
+        className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-300 ease-in-out transform-gpu ${isDark ? 'translate-x-6' : 'translate-x-1'
+          }`}
       />
     </button>
   );
-}
+});
 
 export function Settings() {
   const persons = usePersons();
   const settings = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isDark = settings.theme === 'dark';
+
+  const personOptions = useMemo(() => {
+    return persons.map((p) => (
+      <option key={p.id} value={p.id}>
+        {p.name}
+      </option>
+    ));
+  }, [persons]);
 
   async function handleMyPersonChange(id: string) {
     try {
@@ -46,22 +52,25 @@ export function Settings() {
   async function handleThemeToggle() {
     const next = isDark ? 'light' : 'dark';
 
-    // Terapkan LANGSUNG ke layar dulu (optimistic update) — jangan tunggu network
-    // round-trip ke Supabase, supaya toggle-nya terasa instan, bukan lag.
+    // Optimistic update - langsung apply ke UI
     document.documentElement.classList.toggle('dark', next === 'dark');
     try {
       localStorage.setItem('theme', next);
-    } catch {
-      // localStorage mungkin diblokir — tidak masalah.
+    } catch { }
+
+    // Update state lokal tanpa trigger re-fetch
+    if ('updateSettingsLocal' in settings) {
+      (settings as any).updateSettingsLocal({ theme: next });
     }
 
-    try {
-      await updateSettings({ theme: next });
-      showToast(next === 'dark' ? '✓ Mode gelap diaktifkan' : '✓ Mode terang diaktifkan');
-    } catch (err) {
+    // Fire and forget ke Supabase
+    updateSettings({ theme: next }).catch((err) => {
       console.error('Gagal ganti tema:', err);
       showToast('✗ Gagal menyimpan tema, coba lagi');
-    }
+    });
+
+    // Langsung show toast
+    showToast(next === 'dark' ? '✓ Mode gelap diaktifkan' : '✓ Mode terang diaktifkan');
   }
 
   async function handleExport() {
