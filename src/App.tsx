@@ -9,6 +9,7 @@ import { PersonDetail } from './pages/PersonDetail';
 import { Network } from './pages/Network';
 import { Settings } from './pages/Settings';
 import { useThemeEffect } from './hooks/useTheme';
+import MyComponent from './components/MyComponent';
 
 function SupabaseSetupNotice() {
   return (
@@ -22,6 +23,7 @@ function SupabaseSetupNotice() {
           Supabase kamu. Lihat README bagian "Setup Supabase" untuk langkah lengkapnya.
         </p>
       </div>
+      <MyComponent />
     </div>
   );
 }
