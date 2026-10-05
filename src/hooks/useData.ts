@@ -30,7 +30,19 @@ export function useDebts(): Debt[] {
 export function usePayments(): Payment[] { return useCollectionData<Payment>('payments'); }
 
 export function useSettings(): Settings {
-  const [settings, setSettings] = useState<Settings>({ id: 'settings', myPersonId: null, theme: 'light' });
+  const [settings, setSettings] = useState<Settings>(() => {
+    // Baca cache tema dari localStorage buat nilai awal, supaya sama dengan yang sudah
+    // dipasang duluan oleh script di index.html — jadi tidak ada momen "beda" yang bikin
+    // useThemeEffect sempat mencopot class 'dark' sebelum data asli dari Supabase datang.
+    let cachedTheme: Settings['theme'] = 'light';
+    try {
+      if (localStorage.getItem('theme') === 'dark') cachedTheme = 'dark';
+    } catch {
+      // localStorage mungkin diblokir — tidak masalah, pakai default 'light'.
+    }
+    return { id: 'settings', myPersonId: null, theme: cachedTheme };
+  });
+
   useEffect(() => {
     let active = true;
     const load = async () => {
