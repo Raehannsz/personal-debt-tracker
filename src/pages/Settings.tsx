@@ -45,6 +45,16 @@ export function Settings() {
 
   async function handleThemeToggle() {
     const next = isDark ? 'light' : 'dark';
+
+    // Terapkan LANGSUNG ke layar dulu (optimistic update) — jangan tunggu network
+    // round-trip ke Supabase, supaya toggle-nya terasa instan, bukan lag.
+    document.documentElement.classList.toggle('dark', next === 'dark');
+    try {
+      localStorage.setItem('theme', next);
+    } catch {
+      // localStorage mungkin diblokir — tidak masalah.
+    }
+
     try {
       await updateSettings({ theme: next });
       showToast(next === 'dark' ? '✓ Mode gelap diaktifkan' : '✓ Mode terang diaktifkan');
