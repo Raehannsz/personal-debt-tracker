@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Person, Debt, Payment, Settings } from '../types';
 
@@ -29,11 +29,8 @@ export function useDebts(): Debt[] {
 }
 export function usePayments(): Payment[] { return useCollectionData<Payment>('payments'); }
 
-export function useSettings(): Settings {
+export function useSettings(): Settings & { updateSettingsLocal: (s: Partial<Settings>) => void } {
   const [settings, setSettings] = useState<Settings>(() => {
-    // Baca cache tema dari localStorage buat nilai awal, supaya sama dengan yang sudah
-    // dipasang duluan oleh script di index.html — jadi tidak ada momen "beda" yang bikin
-    // useThemeEffect sempat mencopot class 'dark' sebelum data asli dari Supabase datang.
     let cachedTheme: Settings['theme'] = 'light';
     try {
       if (localStorage.getItem('theme') === 'dark') cachedTheme = 'dark';
@@ -43,18 +40,44 @@ export function useSettings(): Settings {
     return { id: 'settings', myPersonId: null, theme: cachedTheme };
   });
 
+  const isLocalUpdate = useRef(false);
+
   useEffect(() => {
     let active = true;
+
     const load = async () => {
       const { data, error } = await supabase.from('app_settings').select('*').eq('id', 'settings').maybeSingle();
       if (error) { console.error('Gagal memuat settings:', error); return; }
       if (active && data) setSettings(data as Settings);
     };
+
     void load();
-    const channel = supabase.channel(`settings-changes-${crypto.randomUUID()}`).on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => void load()).subscribe();
-    return () => { active = false; void supabase.removeChannel(channel); };
+
+    const channel = supabase.channel(`settings-changes-${crypto.randomUUID()}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'app_settings'
+      }, () => {
+        if (!isLocalUpdate.current) {
+          void load();
+        }
+        isLocalUpdate.current = false;
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
   }, []);
-  return settings;
+
+  const updateSettingsLocal = useCallback((newSettings: Partial<Settings>) => {
+    isLocalUpdate.current = true;
+    setSettings(prev => ({ ...prev, ...newSettings }));
+  }, []);
+
+  return { ...settings, updateSettingsLocal };
 }
 export function usePerson(id: string | undefined): Person | undefined {
   const persons = useCollectionData<Person>('persons');
