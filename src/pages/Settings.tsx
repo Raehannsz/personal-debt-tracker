@@ -1,4 +1,4 @@
-import { useRef, useMemo, memo } from 'react';
+import { useRef, memo } from 'react'; // Hapus useMemo dari sini
 import { usePersons, useSettings } from '../hooks/useData';
 import { updateSettings, exportData, downloadBackup, validateBackup, importData, resetAllData } from '../services/settingsRepo';
 import { deleteAllDebts } from '../services/debtRepo';
@@ -6,6 +6,7 @@ import { Card, Button, Label, Select } from '../components/ui';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import { seedDemoData, clearDemoData, isEmpty } from '../data/seed';
+import type { Settings as SettingsType } from '../types'; // Import type untuk casting yang aman
 
 const ThemeToggle = memo(function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   return (
@@ -27,17 +28,10 @@ const ThemeToggle = memo(function ThemeToggle({ isDark, onToggle }: { isDark: bo
 
 export function Settings() {
   const persons = usePersons();
-  const settings = useSettings();
+  // Cast tipe agar TypeScript tahu bahwa updateSettingsLocal ada
+  const settings = useSettings() as SettingsType & { updateSettingsLocal: (s: Partial<SettingsType>) => void };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isDark = settings.theme === 'dark';
-
-  const personOptions = useMemo(() => {
-    return persons.map((p) => (
-      <option key={p.id} value={p.id}>
-        {p.name}
-      </option>
-    ));
-  }, [persons]);
 
   async function handleMyPersonChange(id: string) {
     try {
@@ -52,24 +46,22 @@ export function Settings() {
   async function handleThemeToggle() {
     const next = isDark ? 'light' : 'dark';
 
-    // Optimistic update - langsung apply ke UI
+    // 1. Optimistic update: Langsung apply ke UI (INSTAN)
     document.documentElement.classList.toggle('dark', next === 'dark');
     try {
       localStorage.setItem('theme', next);
     } catch { }
 
-    // Update state lokal tanpa trigger re-fetch
-    if ('updateSettingsLocal' in settings) {
-      (settings as any).updateSettingsLocal({ theme: next });
-    }
+    // 2. Update state lokal TANPA memicu re-fetch loop dari Supabase
+    settings.updateSettingsLocal({ theme: next });
 
-    // Fire and forget ke Supabase
+    // 3. Fire and forget ke Supabase (tidak di-await, jadi tidak memblokir animasi)
     updateSettings({ theme: next }).catch((err) => {
       console.error('Gagal ganti tema:', err);
       showToast('✗ Gagal menyimpan tema, coba lagi');
     });
 
-    // Langsung show toast
+    // 4. Langsung show toast
     showToast(next === 'dark' ? '✓ Mode gelap diaktifkan' : '✓ Mode terang diaktifkan');
   }
 
