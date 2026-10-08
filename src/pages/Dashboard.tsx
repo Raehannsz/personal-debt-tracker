@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
 import {
@@ -17,19 +18,36 @@ export function Dashboard() {
   const payments = usePayments();
   const persons = usePersons();
   const settings = useSettings();
-
   const me = settings.myPersonId;
-  const { totalDebt, totalReceivable } = me
-    ? getNetTotals(me, persons.map((p) => p.id), debts, payments)
-    : { totalDebt: 0, totalReceivable: 0 };
-  const activeCount = getActiveDebtsCount(debts);
-  const nearestDue = getNearestDueDate(debts);
-  const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
 
-  const netEdges = getNetEdges(debts, payments)
-    .map((e) => ({ fromId: e.fromId, toId: e.toId, from: personName(e.fromId), to: personName(e.toId), amount: e.amount }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5);
+  // PERBAIKAN: Memoize semua kalkulasi berat
+  const personIds = useMemo(() => persons.map((p) => p.id), [persons]);
+
+  const { totalDebt, totalReceivable } = useMemo(() => {
+    if (!me) return { totalDebt: 0, totalReceivable: 0 };
+    return getNetTotals(me, personIds, debts, payments);
+  }, [me, personIds, debts, payments]);
+
+  const activeCount = useMemo(() => getActiveDebtsCount(debts), [debts]);
+  const nearestDue = useMemo(() => getNearestDueDate(debts), [debts]);
+
+  const personName = useMemo(() => {
+    const personMap = new Map(persons.map((p) => [p.id, p.name]));
+    return (id: string) => personMap.get(id) ?? '—';
+  }, [persons]);
+
+  const netEdges = useMemo(() => {
+    return getNetEdges(debts, payments)
+      .map((e) => ({
+        fromId: e.fromId,
+        toId: e.toId,
+        from: personName(e.fromId),
+        to: personName(e.toId),
+        amount: e.amount,
+      }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [debts, payments, personName]);
 
   async function handleSettle(fromId: string, toId: string, from: string, to: string, amount: number) {
     const ok = await confirmDialog({
@@ -43,7 +61,7 @@ export function Dashboard() {
       showToast('✓ Hutang berhasil ditandai lunas');
     } catch (err) {
       console.error('Gagal menandai lunas:', err);
-      showToast('✗ Gagal menandai lunas, coba lagi');
+      showToast(' Gagal menandai lunas, coba lagi');
     }
   }
 
@@ -66,7 +84,6 @@ export function Dashboard() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <h2 className="text-lg font-semibold text-slate-800">Dashboard</h2>
-
       {!me && (
         <Card className="p-4 bg-indigo-50 border-indigo-100">
           <p className="text-sm text-indigo-800">
@@ -78,7 +95,6 @@ export function Dashboard() {
           </p>
         </Card>
       )}
-
       <div className="grid grid-cols-2 gap-3">
         <Card className="p-4">
           <p className="text-xs text-slate-500 mb-1">Total Hutang</p>
@@ -99,7 +115,6 @@ export function Dashboard() {
           </p>
         </Card>
       </div>
-
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold text-slate-800 text-sm">Ringkasan Hutang (Net)</h3>
