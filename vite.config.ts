@@ -3,9 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
 
-// https://vite.dev/config/
 export default defineConfig({
-  // Relative base so the build works on GitHub Pages (subpath), Vercel, Netlify, or local file hosting.
   base: './',
   plugins: [
     react(),
@@ -30,11 +28,62 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
-        // Pastikan service worker baru langsung mengambil alih (hindari cache lama nyangkut dan bikin blank page).
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        // PERBAIKAN: Tambahkan runtime caching untuk Supabase API
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-api',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60, // 1 jam
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+        ],
       },
     }),
   ],
+  // PERBAIKAN: Tambahkan manual chunk splitting untuk vendor libraries
+  build: {
+  rollupOptions: {
+    output: {
+      manualChunks(id: string) {
+        // Supabase
+        if (id.includes('@supabase/supabase-js')) {
+          return 'vendor-supabase';
+        }
+        // FontAwesome
+        if (
+          id.includes('@fortawesome/react-fontawesome') ||
+          id.includes('@fortawesome/free-solid-svg-icons') ||
+          id.includes('@fortawesome/fontawesome-svg-core')
+        ) {
+          return 'vendor-fontawesome';
+        }
+        // React ecosystem
+        if (
+          id.includes('react') &&
+          !id.includes('react-router') &&
+          !id.includes('vite')
+        ) {
+          return 'vendor-react';
+        }
+        // React Router
+        if (id.includes('react-router')) {
+          return 'vendor-router';
+        }
+        // Default: biarkan Vite handle sendiri
+        return undefined;
+      },
+    },
+  },
+},
 })
