@@ -4,6 +4,8 @@ import { getPersonBalance, getNetBalance, getRemainingDebt } from '../services/d
 import { formatCurrency, formatDate, formatTime } from '../utils/format';
 import { Card, Badge } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
+import { usePageLoading } from '../hooks/usePageLoading';
+import { PersonDetailSkeleton } from '../components/Skeleton';
 
 export function PersonDetail() {
   const { id } = useParams<{ id: string }>();
@@ -12,6 +14,9 @@ export function PersonDetail() {
   const payments = usePayments();
   const settings = useSettings();
   const persons = usePersons(true);
+  const loading = usePageLoading(['persons', 'debts', 'payments', 'settings']);
+
+  if (loading) return <PersonDetailSkeleton />;
 
   if (!person) {
     return <div className="p-6 text-slate-500 text-sm">Orang tidak ditemukan.</div>;
