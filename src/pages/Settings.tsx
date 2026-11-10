@@ -6,6 +6,8 @@ import { Card, Button, Label, Select } from '../components/ui';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import { seedDemoData, clearDemoData, isEmpty } from '../data/seed';
+import { usePageLoading } from '../hooks/usePageLoading';
+import { SettingsSkeleton } from '../components/Skeleton';
 import type { Settings as SettingsType } from '../types'; // Import type untuk casting yang aman
 
 const ThemeToggle = memo(function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
@@ -32,6 +34,7 @@ export function Settings() {
   const settings = useSettings() as SettingsType & { updateSettingsLocal: (s: Partial<SettingsType>) => void };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isDark = settings.theme === 'dark';
+  const loading = usePageLoading(['persons', 'settings']);
 
   async function handleMyPersonChange(id: string) {
     try {
@@ -177,6 +180,8 @@ export function Settings() {
       showToast('✗ Gagal, coba lagi');
     }
   }
+
+  if (loading) return <SettingsSkeleton />;
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
