@@ -54,14 +54,26 @@ export function Select({ className = '', ...props }: InputHTMLAttributes<HTMLSel
   );
 }
 
-export function Badge({ children, color = 'slate' }: { children: ReactNode; color?: 'slate' | 'green' | 'orange' | 'red' }) {
+export function Badge({ 
+  children, 
+  color = 'slate',
+  className 
+}: { 
+  children: ReactNode; 
+  color?: 'slate' | 'green' | 'orange' | 'red';
+  className?: string;
+}) {
   const colors: Record<string, string> = {
     slate: 'bg-slate-100 text-slate-600',
     green: 'bg-emerald-100 text-emerald-700',
     orange: 'bg-orange-100 text-orange-700',
     red: 'bg-red-100 text-red-700',
   };
-  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${colors[color]}`}>{children}</span>;
+  return (
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${colors[color]} ${className ?? ''}`}>
+      {children}
+    </span>
+  );
 }
 
 export function EmptyState({
