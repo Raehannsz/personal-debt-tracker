@@ -10,6 +10,8 @@ import { DebtFormModal } from '../components/DebtFormModal';
 import { cancelDebt, deleteDebt } from '../services/debtRepo';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
+import { usePageLoading } from '../hooks/usePageLoading';
+import { DebtDetailSkeleton } from '../components/Skeleton';
 
 export function DebtDetail() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +21,9 @@ export function DebtDetail() {
   const persons = usePersons(true);
   const [showPayment, setShowPayment] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const loading = usePageLoading(['persons', 'debts', 'payments']);
+
+  if (loading) return <DebtDetailSkeleton />;
 
   if (!debt) {
     return <div className="p-6 text-slate-500 text-sm">Transaksi tidak ditemukan.</div>;
@@ -128,6 +133,15 @@ export function DebtDetail() {
               {formatDate(debt.dueDate)}
             </span>
           </div>
+
+          {latestNote && (
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-500 shrink-0">Catatan terakhir</span>
+              <span className="text-slate-800 text-right italic break-words min-w-0">
+                "{latestNote}"
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 mt-5">
