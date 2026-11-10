@@ -1,9 +1,40 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Person, Debt, Payment, Settings } from '../types';
 
 // Cache global untuk mencegah "layar kosong" saat navigasi
 const globalCache = new Map<string, any[]>();
+
+// ─── Status "data sudah termuat" (dipakai untuk skeleton loading) ───
+export type DataKey = 'persons' | 'debts' | 'payments' | 'settings';
+
+const loadedKeys = new Set<DataKey>();
+const loadListeners = new Set<() => void>();
+
+function markLoaded(key: DataKey) {
+  if (loadedKeys.has(key)) return;
+  loadedKeys.add(key);
+  loadListeners.forEach((l) => l());
+}
+
+function subscribeLoaded(listener: () => void) {
+  loadListeners.add(listener);
+  return () => {
+    loadListeners.delete(listener);
+  };
+}
+
+/**
+ * true jika SEMUA key yang diminta sudah pernah berhasil dimuat dari Supabase.
+ * Setelah pertama kali termuat, nilainya tetap true (data ada di cache),
+ * jadi pindah halaman tidak memunculkan skeleton lagi.
+ */
+export function useDataReady(keys: DataKey[]): boolean {
+  return useSyncExternalStore(
+    subscribeLoaded,
+    () => keys.every((k) => loadedKeys.has(k))
+  );
+}
 
 function useCollectionData<T>(
   table: 'persons' | 'debts' | 'payments'
@@ -22,6 +53,7 @@ function useCollectionData<T>(
 
       if (error) {
         console.error(`Gagal memuat ${table}:`, error);
+        markLoaded(table);
         return;
       }
 
@@ -31,6 +63,7 @@ function useCollectionData<T>(
 
       globalCache.set(table, newData);
       setData(newData);
+      markLoaded(table);
     };
 
     void load();
@@ -122,8 +155,10 @@ export function useSettings() {
         .maybeSingle();
       if (error) {
         console.error('Gagal memuat settings:', error);
+        markLoaded('settings');
         return;
       }
+      markLoaded('settings');
       if (active && data) {
         if (!isLocalUpdate.current) {
           setSettings(data as Settings);
