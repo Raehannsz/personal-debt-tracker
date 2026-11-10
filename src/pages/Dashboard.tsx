@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'; // ← 1. TAMBAHKAN useState & useEffect
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
 import {
@@ -12,6 +12,8 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { Card, Button, EmptyState } from '../components/ui';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
+import { usePageLoading } from '../hooks/usePageLoading';
+import { DashboardSkeleton } from '../components/Skeleton';
 
 export function Dashboard() {
   // Hooks harus tetap di paling atas (Rules of Hooks)
@@ -21,14 +23,8 @@ export function Dashboard() {
   const settings = useSettings();
   const me = settings.myPersonId;
 
-  // 2. STATE LOADING
-  const [loading, setLoading] = useState(true);
-
-  // 3. EFFECT UNTUK SIMULASI LOADING (Mencegah flicker/berkedip jika data sangat cepat)
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 400); // 400ms terasa lebih smooth
-    return () => clearTimeout(timer);
-  }, []);
+  // Loading mengikuti status data asli dari Supabase
+  const loading = usePageLoading(['persons', 'debts', 'payments', 'settings']);
 
   // Kalkulasi berat tetap di-memoize agar performa optimal
   const personIds = useMemo(() => persons.map((p) => p.id), [persons]);
@@ -74,37 +70,8 @@ export function Dashboard() {
     }
   }
 
-  // 4. TAMPILAN SKELETON LOADING (Dikembalikan SEBELUM render utama)
-  if (loading) {
-    return (
-      <div className="p-4 sm:p-6 space-y-4">
-        {/* Header Skeleton */}
-        <div className="h-7 w-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
-
-        {/* Warning Card Skeleton (Hanya muncul jika belum ada 'me') */}
-        {!me && (
-          <div className="h-16 bg-slate-200 dark:bg-slate-700 rounded-xl animate-pulse" />
-        )}
-
-        {/* 4 Grid Cards Skeleton */}
-        <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-24 bg-slate-200 dark:bg-slate-700 rounded-xl animate-pulse" />
-          ))}
-        </div>
-
-        {/* Net Summary Header Skeleton */}
-        <div className="h-6 w-48 bg-slate-200 dark:bg-slate-700 rounded animate-pulse mt-2" />
-
-        {/* Net Summary List Skeleton */}
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 bg-slate-200 dark:bg-slate-700 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // 4. SKELETON LOADING (sebelum render utama & empty state)
+  if (loading) return <DashboardSkeleton />;
 
   // 5. EARLY RETURN UNTUK EMPTY STATE (Tetap dipertahankan)
   if (persons.length === 0) {
