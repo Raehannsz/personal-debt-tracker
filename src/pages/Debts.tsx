@@ -16,6 +16,18 @@ type SortDir = 'asc' | 'desc';
 type ViewMode = 'list' | 'grid';
 
 const ITEMS_PER_PAGE = 10;
+const VIEW_MODE_KEY = 'debts-view-mode';
+
+// Baca pilihan tampilan terakhir dari localStorage (default: list)
+function getInitialViewMode(): ViewMode {
+  try {
+    const saved = localStorage.getItem(VIEW_MODE_KEY);
+    if (saved === 'list' || saved === 'grid') return saved;
+  } catch {
+    // localStorage tidak tersedia (mis. mode privat) — abaikan
+  }
+  return 'list';
+}
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'ALL', label: 'Semua' },
@@ -54,7 +66,7 @@ export function Debts() {
   const [sortField, setSortField] = useState<SortField>('newest');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(1);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
 
   const debts = useDebts();
   const payments = usePayments();
@@ -65,6 +77,15 @@ export function Debts() {
   useEffect(() => {
     setPage(1);
   }, [filter, personFilter, search, sortField, sortDir]);
+
+  // Simpan pilihan tampilan setiap kali berubah
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, viewMode);
+    } catch {
+      // abaikan
+    }
+  }, [viewMode]);
 
   const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
 
