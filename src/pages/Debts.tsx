@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
 import { getRemainingDebt, getNetPairs } from '../services/debtLogic';
 import { formatCurrency, formatDate, formatTime } from '../utils/format';
+import { getDueInfo } from '../utils/due';
 import { Card, Badge, Button, Input, Select, EmptyState } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { DebtFormModal } from '../components/DebtFormModal';
@@ -58,7 +59,6 @@ function getLatestNote(debtId: string, payments: Payment[]): string | undefined 
 }
 
 export function Debts() {
-  // ✅ SEMUA HOOKS DI DALAM KOMPONEN
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [personFilter, setPersonFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -72,6 +72,7 @@ export function Debts() {
   const payments = usePayments();
   const persons = usePersons();
   const settings = useSettings();
+  const me = settings.myPersonId;
   const loading = usePageLoading(['persons', 'debts', 'payments', 'settings']);
 
   useEffect(() => {
@@ -87,7 +88,8 @@ export function Debts() {
     }
   }, [viewMode]);
 
-  const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
+  const nameById = useMemo(() => new Map(persons.map((p) => [p.id, p.name])), [persons]);
+  const personName = (id: string) => nameById.get(id) ?? '—';
 
   const debtorOptions = useMemo(() => {
     const activeDebtorIds = new Set(
@@ -96,9 +98,20 @@ export function Debts() {
     return persons.filter((p) => activeDebtorIds.has(p.id));
   }, [debts, persons]);
 
+  // Jumlah transaksi per filter (ditampilkan di chip)
+  const counts = useMemo(() => {
+    const live = debts.filter((d) => d.status !== 'CANCELLED');
+    return {
+      ALL: live.length,
+      MY_DEBT: me ? live.filter((d) => d.debtorId === me).length : 0,
+      MY_RECEIVABLE: me ? live.filter((d) => d.creditorId === me).length : 0,
+      UNPAID: live.filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL').length,
+      PAID: live.filter((d) => d.status === 'PAID').length,
+    } as Record<FilterKey, number>;
+  }, [debts, me]);
+
   const filtered = useMemo(() => {
     let list = debts.filter((d) => d.status !== 'CANCELLED');
-    const me = settings.myPersonId;
     if (filter === 'MY_DEBT' && me) list = list.filter((d) => d.debtorId === me);
     if (filter === 'MY_RECEIVABLE' && me) list = list.filter((d) => d.creditorId === me);
     if (filter === 'UNPAID') list = list.filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL');
@@ -110,8 +123,9 @@ export function Debts() {
       const q = search.trim().toLowerCase();
       list = list.filter(
         (d) =>
-          personName(d.debtorId).toLowerCase().includes(q) ||
-          personName(d.creditorId).toLowerCase().includes(q)
+          (nameById.get(d.debtorId) ?? '').toLowerCase().includes(q) ||
+          (nameById.get(d.creditorId) ?? '').toLowerCase().includes(q) ||
+          (d.description ?? '').toLowerCase().includes(q)
       );
     }
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -124,7 +138,16 @@ export function Debts() {
       return (timeA - timeB) * dir;
     });
     return list;
-  }, [debts, filter, personFilter, search, settings.myPersonId, persons, sortField, sortDir, payments, personName]);
+  }, [debts, filter, personFilter, search, me, nameById, sortField, sortDir, payments]);
+
+  // Total sisa dari transaksi yang sedang ditampilkan (yang belum lunas)
+  const remainingTotal = useMemo(
+    () =>
+      filtered
+        .filter((d) => d.status !== 'PAID')
+        .reduce((sum, d) => sum + getRemainingDebt(d, payments), 0),
+    [filtered, payments]
+  );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginatedData = useMemo(() => {
@@ -134,7 +157,23 @@ export function Debts() {
 
   const netPairs = useMemo(() => getNetPairs(debts, payments), [debts, payments]);
 
+  const hasActiveFilter = filter !== 'ALL' || personFilter !== '' || search.trim() !== '';
+
+  function resetFilters() {
+    setFilter('ALL');
+    setPersonFilter('');
+    setSearch('');
+  }
+
+  function goToPage(next: number) {
+    setPage(Math.min(totalPages, Math.max(1, next)));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   if (loading) return <DebtsSkeleton />;
+
+  const rangeStart = filtered.length === 0 ? 0 : (page - 1) * ITEMS_PER_PAGE + 1;
+  const rangeEnd = Math.min(page * ITEMS_PER_PAGE, filtered.length);
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
@@ -179,7 +218,11 @@ export function Debts() {
 
       {persons.length > 0 && (
         <>
-          <Input placeholder="Cari nama..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input
+            placeholder="Cari nama atau keterangan..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
           <div>
             <Select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)}>
               <option value="">Semua Orang</option>
@@ -208,6 +251,9 @@ export function Debts() {
                 }`}
               >
                 {f.label}
+                <span className={`ml-1.5 ${filter === f.key ? 'text-indigo-100' : 'text-slate-400'}`}>
+                  {counts[f.key]}
+                </span>
               </button>
             ))}
           </div>
@@ -264,6 +310,29 @@ export function Debts() {
               </button>
             </div>
           </div>
+
+          {/* Ringkasan hasil + reset filter */}
+          {counts.ALL > 0 && (
+            <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+              <p>
+                {filtered.length} transaksi
+                {remainingTotal > 0 && (
+                  <>
+                    {' · '}sisa{' '}
+                    <span className="font-semibold text-slate-700">{formatCurrency(remainingTotal)}</span>
+                  </>
+                )}
+              </p>
+              {hasActiveFilter && (
+                <button
+                  onClick={resetFilters}
+                  className="font-medium text-indigo-600 hover:underline shrink-0"
+                >
+                  Reset filter
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -277,11 +346,21 @@ export function Debts() {
             </Link>
           }
         />
-      ) : filtered.length === 0 ? (
+      ) : counts.ALL === 0 ? (
         <EmptyState
           title="Belum ada transaksi"
           description="Mulai catat hutang atau piutang pertama kamu."
           action={<Button onClick={() => setShowForm(true)}>+ Tambah Hutang</Button>}
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="Tidak ada hasil"
+          description="Tidak ada transaksi yang cocok dengan pencarian atau filter ini."
+          action={
+            <Button variant="secondary" onClick={resetFilters}>
+              Reset filter
+            </Button>
+          }
         />
       ) : (
         <>
@@ -290,16 +369,24 @@ export function Debts() {
               const remaining = getRemainingDebt(d, payments);
               const isPaid = d.status === 'PAID';
               const note = getLatestNote(d.id, payments);
+              const dueInfo = !isPaid ? getDueInfo(d.dueDate) : null;
+              // Hanya tandai yang terlambat / segera jatuh tempo, supaya daftar tidak ramai
+              const urgentDue = dueInfo && dueInfo.color !== 'slate' ? dueInfo : null;
               return (
-                <Link key={d.id} to={`/hutang/${d.id}`}>
+                <Link key={d.id} to={`/hutang/${d.id}`} className="block h-full">
                   <Card className={`hover:border-indigo-200 transition ${viewMode === 'grid' ? 'p-3 h-full' : 'p-3.5'}`}>
                     <div className="flex items-center justify-between gap-1">
                       <p className={`font-medium text-slate-800 truncate ${viewMode === 'grid' ? 'text-xs' : 'text-sm'}`}>
                         {personName(d.debtorId)} → {personName(d.creditorId)}
                       </p>
-                      <Badge color={statusColor(d.status)} className={viewMode === 'grid' ? '!text-[10px] !px-1.5 !py-0.5 shrink-0' : ''}>
-                        {statusLabel(d.status)}
-                      </Badge>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {urgentDue && viewMode === 'list' && (
+                          <Badge color={urgentDue.color}>{urgentDue.text}</Badge>
+                        )}
+                        <Badge color={statusColor(d.status)} className={viewMode === 'grid' ? '!text-[10px] !px-1.5 !py-0.5 shrink-0' : ''}>
+                          {statusLabel(d.status)}
+                        </Badge>
+                      </div>
                     </div>
 
                     {viewMode === 'list' ? (
@@ -341,6 +428,15 @@ export function Debts() {
                           {d.description && (
                             <p className="text-[11px] text-slate-500 truncate mt-0.5">{d.description}</p>
                           )}
+                          {urgentDue && (
+                            <p
+                              className={`text-[11px] font-medium mt-0.5 ${
+                                urgentDue.color === 'red' ? 'text-red-600' : 'text-orange-700'
+                              }`}
+                            >
+                              {urgentDue.text}
+                            </p>
+                          )}
                         </div>
                         <div className="mt-2 pt-2 border-t border-slate-100">
                           <p className={`text-sm font-semibold ${isPaid ? 'text-slate-400' : 'text-slate-800'}`}>
@@ -361,34 +457,31 @@ export function Debts() {
             })}
           </div>
 
-          {/* Toggle View Mode + Pagination */}
-          {filtered.length > 0 && (
-            <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
-              <p className="text-xs text-slate-500">
-                Halaman {page} dari {totalPages} ({filtered.length} transaksi)
-              </p>
-              <div className="flex items-center gap-2">
-                {filtered.length > ITEMS_PER_PAGE && (
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition"
-                    >
-                      ← Sebelumnya
-                    </button>
-                    <button
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition"
-                    >
-                      Selanjutnya →
-                    </button>
-                  </div>
-                )}
+          {/* Pagination */}
+          <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
+            <p className="text-xs text-slate-500">
+              Menampilkan {rangeStart}–{rangeEnd} dari {filtered.length} transaksi
+              {totalPages > 1 && ` · Halaman ${page}/${totalPages}`}
+            </p>
+            {totalPages > 1 && (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page === 1}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition"
+                >
+                  ← Sebelumnya
+                </button>
+                <button
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page === totalPages}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition"
+                >
+                  Selanjutnya →
+                </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
 
