@@ -67,6 +67,15 @@ export function DebtDetail() {
     }
   }
 
+  const DAYS_ID = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+  function getDayName(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return DAYS_ID[d.getDay()];
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <Card className="p-5 text-center">
@@ -103,7 +112,10 @@ export function DebtDetail() {
         <div className="mt-4 text-left space-y-1.5 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-500">Tanggal</span>
-            <span className="text-slate-800">{formatDate(debt.transactionDate)}</span>
+            <span className="text-slate-800">
+              {getDayName(debt.transactionDate) && `${getDayName(debt.transactionDate)}, `}
+              {formatDate(debt.transactionDate)}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Dicatat pukul</span>
@@ -111,20 +123,11 @@ export function DebtDetail() {
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Jatuh tempo</span>
-            <span className="text-slate-800">{formatDate(debt.dueDate)}</span>
+            <span className="text-slate-800">
+              {getDayName(debt.dueDate) && `${getDayName(debt.dueDate)}, `}
+              {formatDate(debt.dueDate)}
+            </span>
           </div>
-          {debt.description && (
-            <div className="pt-2 border-t border-slate-100 mt-2">
-              <p className="text-slate-500 mb-0.5">Keterangan</p>
-              <p className="text-slate-800">{debt.description}</p>
-            </div>
-          )}
-          {latestNote && (
-            <div className="pt-2 border-t border-slate-100 mt-2">
-              <p className="text-slate-500 mb-0.5">Catatan Pembayaran</p>
-              <p className="text-slate-800">{latestNote}</p>
-            </div>
-          )}
         </div>
 
         <div className="flex gap-2 mt-5">
@@ -159,6 +162,7 @@ export function DebtDetail() {
               <Card key={p.id} className="p-3.5 flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-800">
+                    {getDayName(p.paymentDate) && `${getDayName(p.paymentDate)}, `}
                     {formatDate(p.paymentDate, true)} · {formatTime(p.createdAt)}
                   </p>
                   {p.notes && <p className="text-xs text-slate-500 mt-0.5">{p.notes}</p>}
