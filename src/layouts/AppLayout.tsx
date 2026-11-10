@@ -55,10 +55,10 @@ export function AppLayout() {
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 ${
                   isActive
                     ? 'bg-indigo-50 text-indigo-700'
-                    : 'text-slate-600 hover:bg-slate-400'
+                    : 'text-slate-600 hover:bg-slate-100'
                 }`
               }
             >
