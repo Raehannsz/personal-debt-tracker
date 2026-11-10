@@ -3,11 +3,14 @@ import { useDebts, usePayments, usePersons } from '../hooks/useData';
 import { getNetEdges } from '../services/debtLogic';
 import { formatCurrency } from '../utils/format';
 import { EmptyState } from '../components/ui';
+import { usePageLoading } from '../hooks/usePageLoading';
+import { NetworkSkeleton } from '../components/Skeleton';
 
 export function Network() {
   const debts = useDebts();
   const payments = usePayments();
   const persons = usePersons();
+  const loading = usePageLoading(['persons', 'debts', 'payments']);
 
   const personName = (id: string) => persons.find((p) => p.id === id)?.name ?? '—';
 
@@ -27,6 +30,8 @@ export function Network() {
     });
     return Array.from(names);
   }, [edges]);
+
+  if (loading) return <NetworkSkeleton />;
 
   if (edges.length === 0) {
     return (
