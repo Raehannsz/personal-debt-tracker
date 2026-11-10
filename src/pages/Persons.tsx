@@ -10,12 +10,15 @@ import { deletePerson, personHasActiveDebts } from '../services/personRepo';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import type { Person } from '../types';
+import { usePageLoading } from '../hooks/usePageLoading';
+import { PersonsSkeleton } from '../components/Skeleton';
 
 export function Persons() {
   const persons = usePersons();
   const debts = useDebts();
   const payments = usePayments();
   const settings = useSettings();
+  const loading = usePageLoading(['persons', 'debts', 'payments', 'settings']);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Person | null>(null);
@@ -45,6 +48,8 @@ export function Persons() {
       showToast('✗ Gagal menghapus, coba lagi');
     }
   }
+
+  if (loading) return <PersonsSkeleton />;
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
