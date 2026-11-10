@@ -45,11 +45,14 @@ body {
 } */
 
 /* ===== Dark mode: hover states ===== */
-.dark .hover:bg-slate-100:hover { background-color: #334155 !important; }
-.dark .hover:bg-slate-200:hover { background-color: #475569 !important; }
-.dark .hover:bg-indigo-700:hover { background-color: #4338ca !important; }
-.dark .hover:bg-red-700:hover { background-color: #b91c1c !important; }
-.dark .hover:border-indigo-200:hover { border-color: #6366f1 !important; }
+/* Titik dua pada nama class Tailwind HARUS di-escape (\:), kalau tidak selector ini diabaikan browser. */
+.dark .hover\:bg-slate-50:hover { background-color: #334155 !important; }
+.dark .hover\:bg-slate-100:hover { background-color: #334155 !important; }
+.dark .hover\:bg-slate-200:hover { background-color: #475569 !important; }
+.dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.12) !important; }
+.dark .hover\:bg-indigo-700:hover { background-color: #4338ca !important; }
+.dark .hover\:bg-red-700:hover { background-color: #b91c1c !important; }
+.dark .hover\:border-indigo-200:hover { border-color: #6366f1 !important; }
 
 /* ===== Dark mode: teks indigo ===== */
 .dark .text-indigo-700 { color: #a5b4fc !important; }
