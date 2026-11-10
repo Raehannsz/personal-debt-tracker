@@ -1,4 +1,5 @@
-const base = 'bg-slate-200 dark:bg-slate-700 animate-pulse';
+// Mode gelap otomatis ditangani index.css (.dark .bg-slate-200)
+const base = 'bg-slate-200 animate-pulse';
 
 export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`${base} ${className}`} />;
