@@ -7,6 +7,8 @@ import { Card, Badge, Button, Input, Select, EmptyState } from '../components/ui
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { DebtFormModal } from '../components/DebtFormModal';
 import type { Payment } from '../types';
+import { usePageLoading } from '../hooks/usePageLoading';
+import { DebtsSkeleton } from '../components/Skeleton';
 
 type FilterKey = 'ALL' | 'MY_DEBT' | 'MY_RECEIVABLE' | 'UNPAID' | 'PAID';
 type SortField = 'newest' | 'oldest' | 'amount';
@@ -45,7 +47,6 @@ function getLatestNote(debtId: string, payments: Payment[]): string | undefined 
 
 export function Debts() {
   // ✅ SEMUA HOOKS DI DALAM KOMPONEN
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [personFilter, setPersonFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -59,11 +60,7 @@ export function Debts() {
   const payments = usePayments();
   const persons = usePersons();
   const settings = useSettings();
-
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 400);
-    return () => clearTimeout(timer);
-  }, []);
+  const loading = usePageLoading(['persons', 'debts', 'payments', 'settings']);
 
   useEffect(() => {
     setPage(1);
@@ -116,21 +113,7 @@ export function Debts() {
 
   const netPairs = useMemo(() => getNetPairs(debts, payments), [debts, payments]);
 
-  if (loading) {
-    return (
-      <div className="p-4 sm:p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="h-7 w-24 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
-          <div className="h-9 w-32 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse" />
-        </div>
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-20 bg-slate-200 dark:bg-slate-700 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <DebtsSkeleton />;
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
