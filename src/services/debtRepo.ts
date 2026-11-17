@@ -13,6 +13,32 @@ export async function createDebt(input: { debtorId: string; creditorId: string; 
   const now = nowISO(); const debt: Debt = { id: genId(), debtorId: input.debtorId, creditorId: input.creditorId, amount: input.amount, description: input.description?.trim() || undefined, transactionDate: input.transactionDate, dueDate: input.dueDate || null, status: 'ACTIVE', createdAt: now, updatedAt: now };
   const { error } = await supabase.from('debts').insert(debt); if (error) throw error; return debt;
 }
+export async function createDebts(input: {
+  creditorId: string;
+  description?: string;
+  transactionDate: string;
+  dueDate?: string | null;
+  items: { debtorId: string; amount: number }[];
+}): Promise<Debt[]> {
+  const now = nowISO();
+  const groupId = input.items.length > 1 ? genId() : null;
+  const debts: Debt[] = input.items.map((it) => ({
+    id: genId(),
+    debtorId: it.debtorId,
+    creditorId: input.creditorId,
+    amount: it.amount,
+    description: input.description?.trim() || undefined,
+    transactionDate: input.transactionDate,
+    dueDate: input.dueDate || null,
+    status: 'ACTIVE',
+    groupId,
+    createdAt: now,
+    updatedAt: now,
+  }));
+  const { error } = await supabase.from('debts').insert(debts);
+  if (error) throw error;
+  return debts;
+}
 export async function updateDebt(id: string, input: { debtorId: string; creditorId: string; amount: number; description?: string; transactionDate: string; dueDate?: string | null }): Promise<void> {
   const debt = await getDebt(id); if (!debt) return; const merged: Debt = { ...debt, ...input, description: input.description?.trim() || undefined, dueDate: input.dueDate || null, updatedAt: nowISO() }; merged.status = computeDebtStatus(merged, await getPaymentsForDebt(id));
   const { error } = await supabase.from('debts').update(merged).eq('id', id); if (error) throw error;
@@ -23,6 +49,24 @@ export async function addPayment(input: { debtId: string; amount: number; paymen
   const payment: Payment = { id: genId(), debtId: input.debtId, amount: input.amount, paymentDate: input.paymentDate, notes: input.notes?.trim() || undefined, createdAt: nowISO() };
   const { data, error } = await supabase.rpc('add_payment_and_update_debt', { payment_id: payment.id, payment_debt_id: payment.debtId, payment_amount: payment.amount, payment_date: payment.paymentDate, payment_notes: payment.notes ?? null, payment_created_at: payment.createdAt });
   if (error) throw error; return (data ?? payment) as Payment;
+}
+export async function cancelDebtGroup(groupId: string, creditorId: string): Promise<void> {
+  const { error } = await supabase
+    .from('debts')
+    .update({ status: 'CANCELLED', updatedAt: nowISO() })
+    .eq('groupId', groupId)
+    .eq('creditorId', creditorId)
+    .neq('status', 'PAID');
+  if (error) throw error;
+}
+
+export async function deleteDebtGroup(groupId: string, creditorId: string): Promise<void> {
+  const { error } = await supabase
+    .from('debts')
+    .delete()
+    .eq('groupId', groupId)
+    .eq('creditorId', creditorId);
+  if (error) throw error;
 }
 export async function settleAllBetween(personAId: string, personBId: string): Promise<void> {
   const debts = await rows<Debt>('debts'); const related = debts.filter((d) => ((d.debtorId === personAId && d.creditorId === personBId) || (d.debtorId === personBId && d.creditorId === personAId)) && (d.status === 'ACTIVE' || d.status === 'PARTIAL'));
