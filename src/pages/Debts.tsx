@@ -1,23 +1,25 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useDebts, usePayments, usePersons, useSettings } from '../hooks/useData';
-import { getRemainingDebt, getNetPairs } from '../services/debtLogic';
+import { getNetPairs } from '../services/debtLogic';
+import { buildEntries, countEntries, entryTitle } from '../services/debtGroups';
 import { formatCurrency, formatDate, formatTime } from '../utils/format';
 import { getDueInfo } from '../utils/due';
 import { Card, Badge, Button, Input, Select, EmptyState } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { DebtFormModal } from '../components/DebtFormModal';
-import type { Payment } from '../types';
+import type { Debt, Payment } from '../types';
 import { usePageLoading } from '../hooks/usePageLoading';
 import { DebtsSkeleton } from '../components/Skeleton';
 
-type FilterKey = 'ALL' | 'MY_DEBT' | 'MY_RECEIVABLE' | 'UNPAID' | 'PAID';
+type FilterKey = 'ALL' | 'MY_DEBT' | 'MY_RECEIVABLE' | 'UNPAID' | 'DUE' | 'PAID';
 type SortField = 'newest' | 'oldest' | 'amount';
 type SortDir = 'asc' | 'desc';
 type ViewMode = 'list' | 'grid';
 
 const ITEMS_PER_PAGE = 10;
 const VIEW_MODE_KEY = 'debts-view-mode';
+const GROUPED_KEY = 'debts-grouped';
 
 // Baca pilihan tampilan terakhir dari localStorage (default: list)
 function getInitialViewMode(): ViewMode {
@@ -30,11 +32,21 @@ function getInitialViewMode(): ViewMode {
   return 'list';
 }
 
+// Default: transaksi bersama dikelompokkan
+function getInitialGrouped(): boolean {
+  try {
+    return localStorage.getItem(GROUPED_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'ALL', label: 'Semua' },
   { key: 'MY_DEBT', label: 'Hutang saya' },
   { key: 'MY_RECEIVABLE', label: 'Piutang saya' },
   { key: 'UNPAID', label: 'Belum lunas' },
+  { key: 'DUE', label: 'Jatuh tempo' },
   { key: 'PAID', label: 'Lunas' },
 ];
 
@@ -52,9 +64,31 @@ function getDayName(iso: string): string {
   return DAYS_ID[d.getDay()];
 }
 
-function getLatestNote(debtId: string, payments: Payment[]): string | undefined {
+function matchesFilter(d: Debt, key: FilterKey, me: string | null): boolean {
+  switch (key) {
+    case 'ALL':
+      return true;
+    case 'MY_DEBT':
+      return !!me && d.debtorId === me;
+    case 'MY_RECEIVABLE':
+      return !!me && d.creditorId === me;
+    case 'UNPAID':
+      return d.status === 'ACTIVE' || d.status === 'PARTIAL';
+    case 'DUE': {
+      if (d.status === 'PAID') return false;
+      const info = getDueInfo(d.dueDate);
+      return !!info && info.color !== 'slate';
+    }
+    case 'PAID':
+      return d.status === 'PAID';
+  }
+}
+
+// Catatan pembayaran terbaru dari salah satu hutang di entry ini
+function getLatestNote(debtIds: string[], payments: Payment[]): string | undefined {
+  const ids = new Set(debtIds);
   return payments
-    .filter((p) => p.debtId === debtId && p.notes)
+    .filter((p) => ids.has(p.debtId) && p.notes)
     .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0]?.notes;
 }
 
@@ -67,6 +101,7 @@ export function Debts() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
+  const [grouped, setGrouped] = useState<boolean>(getInitialGrouped);
 
   const debts = useDebts();
   const payments = usePayments();
@@ -77,7 +112,7 @@ export function Debts() {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, personFilter, search, sortField, sortDir]);
+  }, [filter, personFilter, search, sortField, sortDir, grouped]);
 
   // Simpan pilihan tampilan setiap kali berubah
   useEffect(() => {
@@ -87,6 +122,24 @@ export function Debts() {
       // abaikan
     }
   }, [viewMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GROUPED_KEY, grouped ? '1' : '0');
+    } catch {
+      // abaikan
+    }
+  }, [grouped]);
+
+  // Kalau "Saya" belum dipilih, chip Hutang saya / Piutang saya tidak ada gunanya
+  const visibleFilters = useMemo(
+    () => (me ? FILTERS : FILTERS.filter((f) => f.key !== 'MY_DEBT' && f.key !== 'MY_RECEIVABLE')),
+    [me]
+  );
+
+  useEffect(() => {
+    if (!me && (filter === 'MY_DEBT' || filter === 'MY_RECEIVABLE')) setFilter('ALL');
+  }, [me, filter]);
 
   const nameById = useMemo(() => new Map(persons.map((p) => [p.id, p.name])), [persons]);
   const personName = (id: string) => nameById.get(id) ?? '—';
@@ -98,24 +151,22 @@ export function Debts() {
     return persons.filter((p) => activeDebtorIds.has(p.id));
   }, [debts, persons]);
 
-  // Jumlah transaksi per filter (ditampilkan di chip)
+  // Jumlah transaksi per filter (ditampilkan di chip). Transaksi bersama dihitung 1 kalau dikelompokkan.
   const counts = useMemo(() => {
     const live = debts.filter((d) => d.status !== 'CANCELLED');
-    return {
-      ALL: live.length,
-      MY_DEBT: me ? live.filter((d) => d.debtorId === me).length : 0,
-      MY_RECEIVABLE: me ? live.filter((d) => d.creditorId === me).length : 0,
-      UNPAID: live.filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL').length,
-      PAID: live.filter((d) => d.status === 'PAID').length,
-    } as Record<FilterKey, number>;
-  }, [debts, me]);
+    const result = {} as Record<FilterKey, number>;
+    for (const f of FILTERS) {
+      result[f.key] = countEntries(
+        live.filter((d) => matchesFilter(d, f.key, me)),
+        grouped
+      );
+    }
+    return result;
+  }, [debts, me, grouped]);
 
+  // Baris hutang yang lolos filter & pencarian
   const filtered = useMemo(() => {
-    let list = debts.filter((d) => d.status !== 'CANCELLED');
-    if (filter === 'MY_DEBT' && me) list = list.filter((d) => d.debtorId === me);
-    if (filter === 'MY_RECEIVABLE' && me) list = list.filter((d) => d.creditorId === me);
-    if (filter === 'UNPAID') list = list.filter((d) => d.status === 'ACTIVE' || d.status === 'PARTIAL');
-    if (filter === 'PAID') list = list.filter((d) => d.status === 'PAID');
+    let list = debts.filter((d) => d.status !== 'CANCELLED' && matchesFilter(d, filter, me));
     if (personFilter) {
       list = list.filter((d) => d.debtorId === personFilter && d.status === 'ACTIVE');
     }
@@ -128,32 +179,26 @@ export function Debts() {
           (d.description ?? '').toLowerCase().includes(q)
       );
     }
-    const dir = sortDir === 'asc' ? 1 : -1;
-    list = [...list].sort((a, b) => {
-      if (sortField === 'amount') {
-        return (getRemainingDebt(a, payments) - getRemainingDebt(b, payments)) * dir;
-      }
-      const timeA = new Date(a.createdAt).getTime();
-      const timeB = new Date(b.createdAt).getTime();
-      return (timeA - timeB) * dir;
-    });
     return list;
-  }, [debts, filter, personFilter, search, me, nameById, sortField, sortDir, payments]);
+  }, [debts, filter, personFilter, search, me, nameById]);
 
-  // Total sisa dari transaksi yang sedang ditampilkan (yang belum lunas)
-  const remainingTotal = useMemo(
-    () =>
-      filtered
-        .filter((d) => d.status !== 'PAID')
-        .reduce((sum, d) => sum + getRemainingDebt(d, payments), 0),
-    [filtered, payments]
-  );
+  // Gabungkan jadi entry (transaksi bersama = 1 kartu), lalu urutkan
+  const entries = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return buildEntries(filtered, payments, grouped).sort((a, b) => {
+      if (sortField === 'amount') return (a.remaining - b.remaining) * dir;
+      return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir;
+    });
+  }, [filtered, payments, grouped, sortField, sortDir]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  // Total sisa dari transaksi yang sedang ditampilkan
+  const remainingTotal = useMemo(() => entries.reduce((sum, e) => sum + e.remaining, 0), [entries]);
+
+  const totalPages = Math.max(1, Math.ceil(entries.length / ITEMS_PER_PAGE));
   const paginatedData = useMemo(() => {
     const start = (page - 1) * ITEMS_PER_PAGE;
-    return filtered.slice(start, start + ITEMS_PER_PAGE);
-  }, [filtered, page]);
+    return entries.slice(start, start + ITEMS_PER_PAGE);
+  }, [entries, page]);
 
   const netPairs = useMemo(() => getNetPairs(debts, payments), [debts, payments]);
 
@@ -172,8 +217,8 @@ export function Debts() {
 
   if (loading) return <DebtsSkeleton />;
 
-  const rangeStart = filtered.length === 0 ? 0 : (page - 1) * ITEMS_PER_PAGE + 1;
-  const rangeEnd = Math.min(page * ITEMS_PER_PAGE, filtered.length);
+  const rangeStart = entries.length === 0 ? 0 : (page - 1) * ITEMS_PER_PAGE + 1;
+  const rangeEnd = Math.min(page * ITEMS_PER_PAGE, entries.length);
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
@@ -240,7 +285,7 @@ export function Debts() {
             )}
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            {FILTERS.map((f) => (
+            {visibleFilters.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
@@ -311,11 +356,11 @@ export function Debts() {
             </div>
           </div>
 
-          {/* Ringkasan hasil + reset filter */}
+          {/* Ringkasan hasil + kelompokkan + reset filter */}
           {counts.ALL > 0 && (
             <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
               <p>
-                {filtered.length} transaksi
+                {entries.length} transaksi
                 {remainingTotal > 0 && (
                   <>
                     {' · '}sisa{' '}
@@ -323,14 +368,25 @@ export function Debts() {
                   </>
                 )}
               </p>
-              {hasActiveFilter && (
+              <div className="flex items-center gap-3 shrink-0">
                 <button
-                  onClick={resetFilters}
-                  className="font-medium text-indigo-600 hover:underline shrink-0"
+                  onClick={() => setGrouped((g) => !g)}
+                  aria-pressed={grouped}
+                  title="Gabungkan hutang yang dibuat dalam satu transaksi bersama menjadi satu kartu"
+                  className={`rounded-full px-2.5 py-1 font-medium border transition ${
+                    grouped
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                      : 'bg-white border-slate-200 text-slate-600'
+                  }`}
                 >
-                  Reset filter
+                  👥 Kelompokkan
                 </button>
-              )}
+                {hasActiveFilter && (
+                  <button onClick={resetFilters} className="font-medium text-indigo-600 hover:underline">
+                    Reset filter
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </>
@@ -352,7 +408,7 @@ export function Debts() {
           description="Mulai catat hutang atau piutang pertama kamu."
           action={<Button onClick={() => setShowForm(true)}>+ Tambah Hutang</Button>}
         />
-      ) : filtered.length === 0 ? (
+      ) : entries.length === 0 ? (
         <EmptyState
           title="Tidak ada hasil"
           description="Tidak ada transaksi yang cocok dengan pencarian atau filter ini."
@@ -365,26 +421,34 @@ export function Debts() {
       ) : (
         <>
           <div className={viewMode === 'grid' ? 'grid grid-cols-2 gap-2' : 'space-y-2'}>
-            {paginatedData.map((d) => {
-              const remaining = getRemainingDebt(d, payments);
-              const isPaid = d.status === 'PAID';
-              const note = getLatestNote(d.id, payments);
-              const dueInfo = !isPaid ? getDueInfo(d.dueDate) : null;
+            {paginatedData.map((e) => {
+              const isPaid = e.status === 'PAID';
+              const note = getLatestNote(
+                e.debts.map((d) => d.id),
+                payments
+              );
+              const dueInfo = !isPaid ? getDueInfo(e.dueDate) : null;
               // Hanya tandai yang terlambat / segera jatuh tempo, supaya daftar tidak ramai
               const urgentDue = dueInfo && dueInfo.color !== 'slate' ? dueInfo : null;
+              const title = entryTitle(e, personName);
               return (
-                <Link key={d.id} to={`/hutang/${d.id}`} className="block h-full">
+                <Link key={e.key} to={`/hutang/${e.linkId}`} className="block h-full">
                   <Card className={`hover:border-indigo-200 transition ${viewMode === 'grid' ? 'p-3 h-full' : 'p-3.5'}`}>
                     <div className="flex items-center justify-between gap-1">
                       <p className={`font-medium text-slate-800 truncate ${viewMode === 'grid' ? 'text-xs' : 'text-sm'}`}>
-                        {personName(d.debtorId)} → {personName(d.creditorId)}
+                        {title}
                       </p>
                       <div className="flex items-center gap-1 shrink-0">
                         {urgentDue && viewMode === 'list' && (
                           <Badge color={urgentDue.color}>{urgentDue.text}</Badge>
                         )}
-                        <Badge color={statusColor(d.status)} className={viewMode === 'grid' ? '!text-[10px] !px-1.5 !py-0.5 shrink-0' : ''}>
-                          {statusLabel(d.status)}
+                        {e.isGroup && (
+                          <Badge color="slate" className={viewMode === 'grid' ? '!text-[10px] !px-1.5 !py-0.5 shrink-0' : ''}>
+                            👥 {e.debts.length}
+                          </Badge>
+                        )}
+                        <Badge color={statusColor(e.status)} className={viewMode === 'grid' ? '!text-[10px] !px-1.5 !py-0.5 shrink-0' : ''}>
+                          {statusLabel(e.status)}
                         </Badge>
                       </div>
                     </div>
@@ -393,12 +457,12 @@ export function Debts() {
                       <div className="flex items-start justify-between mt-1.5 gap-2">
                         <div className="min-w-0 flex-1">
                           <p className="text-xs text-slate-500">
-                            {getDayName(d.transactionDate)}, {formatDate(d.transactionDate, true)} ·{' '}
-                            {formatTime(d.createdAt)}
-                            {d.description && (
+                            {getDayName(e.transactionDate)}, {formatDate(e.transactionDate, true)} ·{' '}
+                            {formatTime(e.createdAt)}
+                            {e.description && (
                               <>
                                 <span className="text-slate-300"> · </span>
-                                <span className="text-slate-500 truncate">{d.description}</span>
+                                <span className="text-slate-500 truncate">{e.description}</span>
                               </>
                             )}
                             {note && (
@@ -408,13 +472,18 @@ export function Debts() {
                               </>
                             )}
                           </p>
+                          {e.isGroup && (
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {e.debts.length} orang · {e.paidCount} lunas
+                            </p>
+                          )}
                         </div>
                         <div className="text-right shrink-0">
                           <p className={`text-sm font-semibold ${isPaid ? 'text-slate-400' : 'text-slate-800'}`}>
-                            {formatCurrency(d.amount)}
+                            {formatCurrency(e.amount)}
                           </p>
                           <p className="text-[11px] text-slate-400">
-                            {isPaid ? 'Lunas' : remaining !== d.amount ? `sisa ${formatCurrency(remaining)}` : '\u00A0'}
+                            {isPaid ? 'Lunas' : e.remaining !== e.amount ? `sisa ${formatCurrency(e.remaining)}` : '\u00A0'}
                           </p>
                         </div>
                       </div>
@@ -422,11 +491,16 @@ export function Debts() {
                       <>
                         <div className="mt-1.5">
                           <p className="text-[11px] text-slate-500 leading-tight">
-                            {getDayName(d.transactionDate)}, {formatDate(d.transactionDate, true)} ·{' '}
-                            {formatTime(d.createdAt)}
+                            {getDayName(e.transactionDate)}, {formatDate(e.transactionDate, true)} ·{' '}
+                            {formatTime(e.createdAt)}
                           </p>
-                          {d.description && (
-                            <p className="text-[11px] text-slate-500 truncate mt-0.5">{d.description}</p>
+                          {e.description && (
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5">{e.description}</p>
+                          )}
+                          {e.isGroup && (
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {e.debts.length} orang · {e.paidCount} lunas
+                            </p>
                           )}
                           {urgentDue && (
                             <p
@@ -440,10 +514,10 @@ export function Debts() {
                         </div>
                         <div className="mt-2 pt-2 border-t border-slate-100">
                           <p className={`text-sm font-semibold ${isPaid ? 'text-slate-400' : 'text-slate-800'}`}>
-                            {formatCurrency(d.amount)}
+                            {formatCurrency(e.amount)}
                           </p>
                           <p className="text-[10px] text-slate-400">
-                            {isPaid ? 'Lunas' : remaining !== d.amount ? `sisa ${formatCurrency(remaining)}` : '\u00A0'}
+                            {isPaid ? 'Lunas' : e.remaining !== e.amount ? `sisa ${formatCurrency(e.remaining)}` : '\u00A0'}
                           </p>
                         </div>
                         {note && (
@@ -460,7 +534,7 @@ export function Debts() {
           {/* Pagination */}
           <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
             <p className="text-xs text-slate-500">
-              Menampilkan {rangeStart}–{rangeEnd} dari {filtered.length} transaksi
+              Menampilkan {rangeStart}–{rangeEnd} dari {entries.length} transaksi
               {totalPages > 1 && ` · Halaman ${page}/${totalPages}`}
             </p>
             {totalPages > 1 && (
