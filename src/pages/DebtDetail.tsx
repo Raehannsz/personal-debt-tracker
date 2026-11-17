@@ -1,15 +1,15 @@
-import { useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
-import { useDebt, usePaymentsForDebt, usePersons } from '../hooks/useData';
+import { useDebts, usePayments, usePersons } from '../hooks/useData';
 import { getTotalPaid, getRemainingDebt } from '../services/debtLogic';
 import { formatCurrency, formatDate, formatTime } from '../utils/format';
 import { Card, Badge, Button } from '../components/ui';
 import { statusColor, statusLabel } from '../components/debtStatus';
 import { PaymentFormModal } from '../components/PaymentFormModal';
 import { DebtFormModal } from '../components/DebtFormModal';
-import { cancelDebt, deleteDebt } from '../services/debtRepo';
+import { cancelDebt, deleteDebt, cancelDebtGroup, deleteDebtGroup } from '../services/debtRepo';
 import { confirmDialog } from '../stores/confirmStore';
 import { showToast } from '../stores/toastStore';
 import { usePageLoading } from '../hooks/usePageLoading';
@@ -29,12 +29,25 @@ export function DebtDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const debt = useDebt(id);
-  const payments = usePaymentsForDebt(id);
+  const allDebts = useDebts();
+  const allPayments = usePayments();
   const persons = usePersons(true);
   const [showPayment, setShowPayment] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const loading = usePageLoading(['persons', 'debts', 'payments']);
+
+  const debt = id ? allDebts.find((d) => d.id === id) : undefined;
+
+  // Riwayat pembayaran hutang ini, terbaru dulu
+  const payments = useMemo(
+    () =>
+      id
+        ? allPayments
+            .filter((p) => p.debtId === id)
+            .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+        : [],
+    [allPayments, id]
+  );
 
   // Kembali ke halaman sebelumnya; kalau halaman ini dibuka langsung (tanpa riwayat), ke daftar hutang.
   function goBack() {
@@ -64,6 +77,7 @@ export function DebtDetail() {
     );
   }
 
+  const nameOf = (pid: string) => persons.find((p) => p.id === pid)?.name ?? '—';
   const debtor = persons.find((p) => p.id === debt.debtorId);
   const creditor = persons.find((p) => p.id === debt.creditorId);
   const paid = getTotalPaid(debt.id, payments);
@@ -74,6 +88,21 @@ export function DebtDetail() {
   const dueInfo = !isPaid && !isCancelled ? getDueInfo(debt.dueDate) : null;
   // payments sudah diurutkan terbaru dulu — ambil catatan dari pembayaran paling baru.
   const latestNote = payments.find((p) => p.notes)?.notes;
+
+  // ── Transaksi bersama (satu transaksi, beberapa orang) ──
+  const groupId = debt.groupId ?? null;
+  const creditorId = debt.creditorId;
+  const groupMembers = groupId
+    ? allDebts.filter((d) => d.groupId === groupId && d.creditorId === creditorId)
+    : [];
+  const isGroup = groupMembers.length > 1;
+  const liveMembers = groupMembers.filter((d) => d.status !== 'CANCELLED');
+  const groupTotal = liveMembers.reduce((sum, d) => sum + d.amount, 0);
+  const groupRemaining = liveMembers.reduce((sum, d) => sum + getRemainingDebt(d, allPayments), 0);
+  const groupPaid = groupTotal - groupRemaining;
+  const groupProgress = groupTotal > 0 ? Math.min(100, Math.round((groupPaid / groupTotal) * 100)) : 0;
+  const memberRows = [...groupMembers].sort((a, b) => nameOf(a.debtorId).localeCompare(nameOf(b.debtorId)));
+  const hasOpenMembers = liveMembers.some((d) => d.status !== 'PAID');
 
   async function handleDelete() {
     const ok = await confirmDialog({
@@ -110,6 +139,60 @@ export function DebtDetail() {
     }
   }
 
+  async function handleCancelGroup() {
+    if (!groupId) return;
+    const ok = await confirmDialog({
+      title: 'Batalkan Semua yang Belum Lunas?',
+      message: `Hutang ${liveMembers.filter((d) => d.status !== 'PAID').length} orang dalam transaksi bersama ini akan dibatalkan. Yang sudah lunas tidak berubah.`,
+      confirmLabel: 'Batalkan Semua',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await cancelDebtGroup(groupId, creditorId);
+      showToast('✓ Transaksi bersama dibatalkan');
+    } catch (err) {
+      console.error('Gagal membatalkan transaksi bersama:', err);
+      showToast('✗ Gagal membatalkan, coba lagi');
+    }
+  }
+
+  async function handleDeleteGroup() {
+    if (!groupId) return;
+    const ok = await confirmDialog({
+      title: 'Hapus Semua Transaksi Bersama?',
+      message: `Hutang ${groupMembers.length} orang dalam transaksi bersama ini akan dihapus permanen beserta riwayat pembayarannya.`,
+      confirmLabel: 'Hapus Semua',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteDebtGroup(groupId, creditorId);
+      showToast('✓ Transaksi bersama dihapus');
+      navigate('/hutang');
+    } catch (err) {
+      console.error('Gagal menghapus transaksi bersama:', err);
+      showToast('✗ Gagal menghapus, coba lagi');
+    }
+  }
+
+  // Salin pesan pengingat siap kirim (WhatsApp, dll)
+  async function handleCopyReminder() {
+    const lines = [
+      `Halo ${debtor?.name ?? 'teman'}, mengingatkan hutang sebesar ${formatCurrency(remaining)} kepada ${creditor?.name ?? '—'}${
+        debt!.description ? ` (${debt!.description})` : ''
+      }${debt!.dueDate ? `, jatuh tempo ${formatDate(debt!.dueDate)}` : ''}.`,
+      'Terima kasih 🙏',
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join(' '));
+      showToast('✓ Pesan pengingat disalin');
+    } catch (err) {
+      console.error('Gagal menyalin pesan:', err);
+      showToast('✗ Gagal menyalin pesan');
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <div className="flex items-center gap-3">
@@ -128,6 +211,7 @@ export function DebtDetail() {
         </p>
         <div className="mt-2 flex justify-center items-center gap-2 flex-wrap">
           <Badge color={statusColor(debt.status)}>{statusLabel(debt.status)}</Badge>
+          {isGroup && <Badge color="slate">👥 Bersama {groupMembers.length} orang</Badge>}
           {isPaid && <span className="text-xs text-slate-400">✓ Lunas</span>}
           {dueInfo && <Badge color={dueInfo.color}>{dueInfo.text}</Badge>}
         </div>
@@ -212,6 +296,11 @@ export function DebtDetail() {
           </Button>
         </div>
         <div className="flex gap-2 mt-2">
+          {!isPaid && !isCancelled && (
+            <Button variant="ghost" className="flex-1" onClick={handleCopyReminder}>
+              Salin Pengingat
+            </Button>
+          )}
           {debt.status !== 'CANCELLED' && (
             <Button variant="ghost" className="flex-1" onClick={handleCancel}>
               Batalkan
@@ -222,6 +311,82 @@ export function DebtDetail() {
           </Button>
         </div>
       </Card>
+
+      {isGroup && (
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-slate-800 text-sm">
+              Transaksi Bersama ({groupMembers.length} orang)
+            </h3>
+            <span className="text-xs text-slate-500">{groupProgress}% terbayar</span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+              style={{ width: `${groupProgress}%` }}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mt-3 text-left">
+            <div className="bg-slate-50 rounded-xl p-2.5">
+              <p className="text-[11px] text-slate-500">Total</p>
+              <p className="text-sm font-semibold text-slate-800">{formatCurrency(groupTotal)}</p>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-2.5">
+              <p className="text-[11px] text-slate-500">Terbayar</p>
+              <p className="text-sm font-semibold text-emerald-600">{formatCurrency(groupPaid)}</p>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-2.5">
+              <p className="text-[11px] text-slate-500">Sisa</p>
+              <p className="text-sm font-semibold text-red-600">{formatCurrency(groupRemaining)}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-1.5">
+            {memberRows.map((m) => {
+              const mRemaining = getRemainingDebt(m, allPayments);
+              const current = m.id === debt.id;
+              return (
+                <Link
+                  key={m.id}
+                  to={`/hutang/${m.id}`}
+                  replace
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition ${
+                    current
+                      ? 'border-indigo-200 bg-indigo-50/60'
+                      : 'border-slate-100 hover:border-indigo-200'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800 truncate">
+                      {nameOf(m.debtorId)}
+                      {current && <span className="ml-1.5 text-[11px] font-normal text-indigo-600">(ini)</span>}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {formatCurrency(m.amount)}
+                      {m.status !== 'PAID' && m.status !== 'CANCELLED' && mRemaining !== m.amount
+                        ? ` · sisa ${formatCurrency(mRemaining)}`
+                        : ''}
+                    </p>
+                  </div>
+                  <Badge color={statusColor(m.status)}>{statusLabel(m.status)}</Badge>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-2 mt-3">
+            {hasOpenMembers && (
+              <Button variant="ghost" className="flex-1" onClick={handleCancelGroup}>
+                Batalkan Semua
+              </Button>
+            )}
+            <Button variant="ghost" className="flex-1 !text-red-600" onClick={handleDeleteGroup}>
+              Hapus Semua
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <div>
         <h3 className="font-semibold text-slate-800 text-sm mb-2">
