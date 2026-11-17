@@ -21,6 +21,7 @@ export interface Debt {
   transactionDate: string;
   dueDate?: string | null;
   status: DebtStatus;
+  groupId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
