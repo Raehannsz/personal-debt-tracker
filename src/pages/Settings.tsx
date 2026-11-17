@@ -8,7 +8,9 @@ import { showToast } from '../stores/toastStore';
 import { seedDemoData, clearDemoData, isEmpty } from '../data/seed';
 import { usePageLoading } from '../hooks/usePageLoading';
 import { SettingsSkeleton } from '../components/Skeleton';
-import type { Settings as SettingsType } from '../types'; // Import type untuk casting yang aman
+import { useSplitPrefs } from '../hooks/useSplitPrefs';
+import type { Settings as SettingsType } from '../types';
+
 
 const ThemeToggle = memo(function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
   return (
@@ -33,6 +35,7 @@ export function Settings() {
   // Cast tipe agar TypeScript tahu bahwa updateSettingsLocal ada
   const settings = useSettings() as SettingsType & { updateSettingsLocal: (s: Partial<SettingsType>) => void };
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { includeCreditor, setIncludeCreditor } = useSplitPrefs();
   const isDark = settings.theme === 'dark';
   const loading = usePageLoading(['persons', 'settings']);
 
@@ -242,6 +245,21 @@ export function Settings() {
         <Button variant="ghost" className="w-full !text-red-600" onClick={handleClearDemo}>
           Kosongkan Data
         </Button>
+      </Card>
+
+      <Card className="p-4">
+        <h3 className="font-medium text-slate-800 text-sm mb-3">Pembagian Hutang</h3>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-slate-700">Pemberi hutang ikut dihitung</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {includeCreditor
+                ? 'Bagi rata ke semua orang + pemberi hutang (bagian pemberi tidak dicatat sebagai hutang).'
+                : 'Bagi rata hanya ke orang yang berhutang.'}
+            </p>
+          </div>
+          <ThemeToggle isDark={includeCreditor} onToggle={() => setIncludeCreditor(!includeCreditor)} />
+        </div>
       </Card>
 
       <p className="text-center text-xs text-slate-400 pt-2">Personal Debt Tracker · Data sinkron real-time via Supabase</p>
